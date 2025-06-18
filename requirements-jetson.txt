@@ -1,0 +1,8 @@
+flwr==1.19.0
+flwr_datasets==0.5.0
+transformers==4.50
+peft==0.14.0
+datasets==3.1.0
+scikit-learn==1.6.1
+sentencepiece==0.2.0
+bitsandbytes==0.46.0
