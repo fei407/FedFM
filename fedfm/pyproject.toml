@@ -10,15 +10,11 @@ license = "Apache-2.0"
 dependencies = [
     "flwr[simulation]>=1.19.0",
     "flwr-datasets>=0.5.0",
-    "torch==2.4.0",
-    "trl==0.8.1",
-    "bitsandbytes==0.45.4",
-    "scipy==1.13.0",
-    "peft==0.6.2",
-    "transformers==4.50.3",
-    "sentencepiece==0.2.0",
-    "omegaconf==2.3.0",
-    "hf_transfer==0.1.8",
+    "torch==2.6.0",
+    "transformers>=4.50.0,<5.0",
+    "evaluate>=0.4.0,<1.0",
+    "datasets>=3.0.0",
+    "scikit-learn>=1.6.1, <2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -32,37 +28,27 @@ serverapp = "fedfm.server_app:app"
 clientapp = "fedfm.client_app:app"
 
 [tool.flwr.app.config]
-model.name = "mistralai/Mistral-7B-v0.3"
-model.quantization = 4
-model.gradient-checkpointing = true
-model.lora.peft-lora-r = 32
-model.lora.peft-lora-alpha = 64
-train.save-every-round = 5
-train.learning-rate-max = 5e-5
-train.learning-rate-min = 1e-6
-train.seq-length = 512
-train.training-arguments.output-dir = ""
-train.training-arguments.learning-rate = ""
-train.training-arguments.per-device-train-batch-size = 16
-train.training-arguments.gradient-accumulation-steps = 1
-train.training-arguments.logging-steps = 10
-train.training-arguments.num-train-epochs = 3
-train.training-arguments.max-steps = 10
-train.training-arguments.save-steps = 1000
-train.training-arguments.save-total-limit = 10
-train.training-arguments.gradient-checkpointing = true
-train.training-arguments.lr-scheduler-type = "constant"
-strategy.fraction-fit = 0.1
-strategy.fraction-evaluate = 0.0
-num-server-rounds = 200
+num-server-rounds = 3
+fraction-fit = 1
+local-epochs = 1
+model-name = "prajjwal1/bert-tiny" # Set a larger model if you have access to more GPU resources
+num-labels = 2
 
-[tool.flwr.app.config.static]
-dataset.name = "flwrlabs/alpaca-gpt4"
+min_available_clients = 1
+min_fit_clients = 1
+min_evaluate_clients = 1
 
 [tool.flwr.federations]
-default = "local-simulation"
+default = "localhost-gpu"
 
-[tool.flwr.federations.local-simulation]
-options.num-supernodes = 20
-options.backend.client-resources.num-cpus = 6
-options.backend.client-resources.num-gpus = 1.0
+[tool.flwr.federations.localhost]
+options.num-supernodes = 1
+
+[tool.flwr.federations.localhost-gpu]
+options.num-supernodes = 1
+options.backend.client-resources.num-cpus = 2 # each ClientApp assumes to use 4CPUs
+options.backend.client-resources.num-gpus = 0.5 # at most 4 ClientApps will run in a given GPU
+
+[tool.flwr.federations.local-deployment]
+address = "127.0.0.1:9093"
+insecure = true

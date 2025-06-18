@@ -1,1 +1,1 @@
-"""fedfm: A Flower / FlowerTune app."""
+"""fedfm: A Flower / HuggingFace app."""

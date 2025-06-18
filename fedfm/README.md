@@ -1,66 +1,32 @@
-# FlowerTune LLM on General NLP Dataset
+# fedfm: A Flower / HuggingFace app
 
-This directory conducts federated instruction tuning with a pretrained [Mistral-7B](https://huggingface.co/mistralai/Mistral-7B-v0.3) model on a [General NLP dataset](https://huggingface.co/datasets/flwrlabs/alpaca-gpt4).
-We use [Flower Datasets](https://flower.dev/docs/datasets/) to download, partition and preprocess the dataset.
-Flower's Simulation Engine is used to simulate the LLM fine-tuning process in federated way,
-which allows users to perform the training on a single GPU.
+## Install dependencies and project
 
-
-## Methodology
-
-This baseline performs federated LLM fine-tuning with [LoRA](https://arxiv.org/pdf/2106.09685) using the [🤗PEFT](https://huggingface.co/docs/peft/en/index) library.
-The clients' models are aggregated with FedAvg strategy.
-This provides a baseline performance for the leaderboard of General NLP challenge.
-
-
-## Environments setup
-
-Project dependencies are defined in `pyproject.toml`. Install them in an activated Python environment with:
-
-```shell
+```bash
 pip install -e .
 ```
 
-## Experimental setup
+## Run with the Simulation Engine
 
-The dataset is divided into 20 partitions in an IID fashion, a partition is assigned to each ClientApp.
-We randomly sample a fraction (0.1) of the total nodes to participate in each round, for a total of `200` rounds.
-All settings are defined in `pyproject.toml`.
-
-> [!IMPORTANT]
-> Please note that `[tool.flwr.app.config.static]` and `options.num-supernodes` under `[tool.flwr.federations.local-simulation]` are not allowed to be modified for fair competition if you plan to participated in the [LLM leaderboard](https://flower.ai/benchmarks/llm-leaderboard).
-
-
-## Running the challenge
-
-First make sure that you have got the access to [Mistral-7B](https://huggingface.co/mistralai/Mistral-7B-v0.3) model with your Hugging-Face account. You can request access directly from the Hugging-Face website.
-Then, follow the instruction [here](https://huggingface.co/docs/huggingface_hub/en/quick-start#login-command) to log in your account. Note you only need to complete this stage once in your development machine:
+In the `fedfm` directory, use `flwr run` to run a local simulation:
 
 ```bash
-huggingface-cli login
+flwr run .
 ```
 
-Run the challenge with default config values.
-The configs are defined in `[tool.flwr.app.config]` entry of `pyproject.toml`, and are loaded automatically.
+Refer to the [How to Run Simulations](https://flower.ai/docs/framework/how-to-run-simulations.html) guide in the documentation for advice on how to optimize your simulations.
 
-```bash
-flwr run
-```
+## Run with the Deployment Engine
 
-## VRAM consumption
+Follow this [how-to guide](https://flower.ai/docs/framework/how-to-run-flower-with-deployment-engine.html) to run the same app in this example but with Flower's Deployment Engine. After that, you might be interested in setting up [secure TLS-enabled communications](https://flower.ai/docs/framework/how-to-enable-tls-connections.html) and [SuperNode authentication](https://flower.ai/docs/framework/how-to-authenticate-supernodes.html) in your federation.
 
-We use Mistral-7B model with 4-bit quantization as default. The estimated VRAM consumption per client for each challenge is shown below:
+You can run Flower on Docker too! Check out the [Flower with Docker](https://flower.ai/docs/framework/docker/index.html) documentation.
 
-| Challenges | GeneralNLP |   Finance  |   Medical  |    Code    |
-| :--------: | :--------: | :--------: | :--------: | :--------: |
-|    VRAM    | ~25.50 GB  | ~17.30 GB  | ~22.80 GB  | ~17.40 GB  |
+## Resources
 
-You can adjust the CPU/GPU resources you assign to each of the clients based on your device, which are specified with `options.backend.client-resources.num-cpus` and `options.backend.client-resources.num-gpus` under `[tool.flwr.federations.local-simulation]` entry in `pyproject.toml`.
-
-
-## Model saving
-
-The global PEFT model checkpoints are saved every 5 rounds after aggregation on the sever side as default, which can be specified with `train.save-every-round` under [tool.flwr.app.config] entry in `pyproject.toml`.
-
-> [!NOTE]
-> Please provide the last PEFT checkpoint if you plan to participated in the [LLM leaderboard](https://flower.ai/benchmarks/llm-leaderboard).
+- Flower website: [flower.ai](https://flower.ai/)
+- Check the documentation: [flower.ai/docs](https://flower.ai/docs/)
+- Give Flower a ⭐️ on GitHub: [GitHub](https://github.com/adap/flower)
+- Join the Flower community!
+  - [Flower Slack](https://flower.ai/join-slack/)
+  - [Flower Discuss](https://discuss.flower.ai/)
