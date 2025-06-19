@@ -52,6 +52,12 @@ Edit `/etc/docker/daemon.json`:
 }
 ```
 
+```bash
+sudo systemctl restart docker
+sudo docker info | grep 'Default Runtime'
+```
+
+
 ### Add Swap Space (Jetson Orin Nano Only)
 
 ```bash
@@ -67,12 +73,14 @@ sudo swapon /mnt/16GB.swap
 sudo usermod -aG docker $USER
 ```
 
+Then close/restart your terminal (or logout) and you should be able to run docker commands (like `docker info`) without needing sudo.
+
 ### Build or Pull a PyTorch Image
 
 ```bash
 jetson-containers build pytorch:2.6
 # Or pull an existing image
-docker pull fw407/fedfm
+docker pull fw407/fedfm-dev:1.0
 ```
 
 ## 2. Set Up the Python Environment on the Server
@@ -150,8 +158,8 @@ New-NetFirewallRule -DisplayName "Open 9093" -Direction Inbound -LocalPort 9093 
 
 ```bash
 # From Jetson
-ping <Windows_IP>
-nc -zv <Windows_IP> 9092
+ping 192.168.0.247
+nc -zv 192.168.0.247 9092
 ```
 
 ## 4. Run FLWR Components
@@ -172,23 +180,18 @@ flwr run . local-deployment --stream
 
 ```bash
 docker run -it --rm \
-  -v /home/fw407/workspace/FedFM:/app/FedFM \
+  -v /home/jetson/FedFM:/app/FedFM \
   -w /app/FedFM \
-  fedfm-dev bash
+  -p 9094:9094 \
+  fw407/fedfm-dev:1.0 \
+  flower-supernode \
+    --insecure \
+    --superlink 192.168.0.247:9092 \
+    --clientappio-api-address 0.0.0.0:9094 \
+    --node-config "partition-id=0 num-partitions=10"
 ```
-
-Inside the container:
-
-```bash
-flower-supernode \
-  --insecure \
-  --superlink 127.0.0.1:9092 \
-  --clientappio-api-address 127.0.0.1:9094 \
-  --node-config "partition-id=0 num-partitions=10"
-```
-
-
 
 ## License
 
 This project is licensed under the MIT License. See `LICENSE` for details.
+
