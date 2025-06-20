@@ -1,0 +1,39 @@
+FROM python:3.10-slim
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    cmake \
+    libjpeg-dev \
+    libpng-dev \
+    libopenblas-dev \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libffi-dev \
+    libssl-dev \
+    libsndfile1-dev \
+    curl \
+    wget \
+    && apt-get clean
+
+RUN pip install --upgrade pip
+
+RUN pip install \
+    torch==2.6.0 \
+    torchvision==0.21.0 \
+    torchaudio==2.6.0
+
+RUN pip install \
+    flwr==1.19.0 \
+    flwr-datasets==0.5.0 \
+    transformers==4.50.0 \
+    peft==0.14.0 \
+    datasets==3.1.0 \
+    scikit-learn==1.6.1 \
+    sentencepiece==0.2.0
+
+RUN pip install bitsandbytes-cpu==0.26.0
+
+WORKDIR /app
+
+
