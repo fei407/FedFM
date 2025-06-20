@@ -32,8 +32,6 @@ RUN pip install \
     scikit-learn==1.6.1 \
     sentencepiece==0.2.0
 
-RUN pip install bitsandbytes-cpu==0.26.0
-
 WORKDIR /app
 
 

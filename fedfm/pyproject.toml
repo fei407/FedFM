@@ -28,15 +28,25 @@ serverapp = "fedfm.server_app:app"
 clientapp = "fedfm.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 3
-fraction-fit = 1
-local-epochs = 1
-model-name = "prajjwal1/bert-tiny" # Set a larger model if you have access to more GPU resources
-num-labels = 2
-
-min_available_clients = 1
-min_fit_clients = 1
-min_evaluate_clients = 1
+# FL
+num-server-rounds       = 3
+fraction-fit            = 1
+local-epochs            = 1
+learning-rate           = 1e-4
+# Clents
+min-available-clients   = 1
+min-fit-clients         = 1
+min-evaluate-clients    = 1
+# Model & Datasets
+model-name              = "prajjwal1/bert-tiny"
+num-labels              = 2
+dataset-name            = "stanfordnlp/imdb"
+data-distribution       = "iid"
+niid-alpha              = 1000
+# PEFT
+peft-name               = "fedit"
+peft-rank               = 16
+peft-inserted-modules   = "query,value"
 
 [tool.flwr.federations]
 default = "localhost-gpu"
