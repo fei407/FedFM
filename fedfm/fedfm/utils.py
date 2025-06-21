@@ -28,3 +28,10 @@ def print_trainable_params(model):
         f"all params: {total_p:,} || "
         f"trainable%: {100 * trainable_p / total_p:.4f} \n"
     )
+
+def print_state_dict_size(state_dict, label="[Comm.]"):
+    total_bytes = 0
+    for name, tensor in state_dict.items():
+        size_mb = tensor.numel() * tensor.element_size() / 1e6
+        total_bytes += size_mb
+    print(f"INFO :      Total size of {label}: {total_bytes:.2f} MB")

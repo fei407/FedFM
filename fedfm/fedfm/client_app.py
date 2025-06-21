@@ -4,18 +4,18 @@ import os
 import warnings
 from typing import Dict, Tuple
 
+from omegaconf import DictConfig
+
 import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context
 from flwr.common.config import unflatten_dict
 from flwr.common.typing import NDArrays, Scalar
-from omegaconf import DictConfig
 
-from transformers import TrainingArguments
 from trl import SFTConfig, SFTTrainer
 
 from .dataset import (
-    get_data_collator_and_propt_formatting,
+    get_tokenizer,
     load_data,
     replace_keys,
 )
@@ -32,6 +32,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 os.environ["RAY_DISABLE_DOCKER_CPU_WARNING"] = "1"
 warnings.filterwarnings("ignore", category=UserWarning)
 
+
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-instance-attributes
 class FlowerClient(NumPyClient):
@@ -40,8 +41,7 @@ class FlowerClient(NumPyClient):
              model_cfg: DictConfig,
              train_cfg: DictConfig,
              trainset,
-             data_collator,
-             formatting_prompts_func,
+             tokenizer,
              num_rounds
     ): # pylint: disable=too-many-arguments
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -50,12 +50,11 @@ class FlowerClient(NumPyClient):
             **train_cfg.training_arguments,
             dataset_text_field = "text",
             max_length = train_cfg.seq_length,
+            completion_only_loss = True,
         )
-        self.data_collator = data_collator
-        self.formatting_prompts_func = formatting_prompts_func
         self.num_rounds = num_rounds
         self.trainset = trainset
-
+        self.tokenizer = tokenizer
         # instantiate model
         self.model = get_model(model_cfg)
 
@@ -84,8 +83,7 @@ class FlowerClient(NumPyClient):
                 model=self.model,
                 args=self.training_arguments,
                 train_dataset=self.trainset,
-                data_collator=self.data_collator,
-                formatting_func=self.formatting_prompts_func,
+                processing_class=self.tokenizer,
             )
 
             # Do local training
@@ -98,8 +96,9 @@ class FlowerClient(NumPyClient):
             )
 
         except Exception as e:
-            print("❌ Training failed:", str(e))
+            print("Training failed!:", str(e))
             raise e
+
 
 def client_fn(context: Context):
     """Create a Flower client representing a single organization."""
@@ -110,16 +109,16 @@ def client_fn(context: Context):
 
     # Let's get the client partition
     client_trainset = load_data(partition_id, num_partitions, cfg.dataset.name)
-    data_collator, formatting_prompts_func = get_data_collator_and_propt_formatting(cfg.model.name)
+    tokenizer = get_tokenizer(cfg.model.name)
 
     return FlowerClient(
         cfg.model,
         cfg.train,
         client_trainset,
-        data_collator,
-        formatting_prompts_func,
+        tokenizer,
         num_rounds,
     ).to_client()
+
 
 # Flower ClientApp
 app = ClientApp(

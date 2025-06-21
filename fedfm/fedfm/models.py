@@ -1,19 +1,19 @@
 import math
-
-import torch
 from omegaconf import DictConfig
 from collections import OrderedDict
+
+import torch
+from flwr.common.typing import NDArrays
+
+from transformers import AutoModelForCausalLM
 from peft import (
     LoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
     set_peft_model_state_dict,
 )
-from peft.utils import prepare_model_for_kbit_training
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig
 
-from flwr.common.typing import NDArrays
-
+from .utils import print_state_dict_size
 
 def cosine_annealing(
     current_round: int,
@@ -25,7 +25,6 @@ def cosine_annealing(
 
     cos_inner = math.pi * current_round / total_round
     return lrate_min + 0.5 * (lrate_max - lrate_min) * (1 + math.cos(cos_inner))
-
 
 def get_model(model_cfg: DictConfig):
     """Load model with appropriate quantization config and other optimizations.
@@ -48,9 +47,13 @@ def set_parameters(model, parameters: NDArrays) -> None:
     params_dict = zip(peft_state_dict_keys, parameters)
     state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
     set_peft_model_state_dict(model, state_dict)
+    print_state_dict_size(state_dict, label="[Download Commm.]")
+
 
 
 def get_parameters(model) -> NDArrays:
     """Return the parameters of the current net."""
     state_dict = get_peft_model_state_dict(model)
+    print_state_dict_size(state_dict, label="[Upload Commm.]")
+
     return [val.cpu().numpy() for _, val in state_dict.items()]

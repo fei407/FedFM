@@ -14,6 +14,8 @@ from .utils import print_trainable_params
 from .models import get_model, get_parameters, set_parameters
 from .dataset import replace_keys
 
+
+# From: https://github.com/adap/flower/tree/main/examples/flowertune-llm
 # Get function that will be executed by the strategy's evaluate() method
 # Here we use it to save global model checkpoints
 def get_evaluate_fn(model_cfg, save_every_round, total_round, save_path):
@@ -22,7 +24,7 @@ def get_evaluate_fn(model_cfg, save_every_round, total_round, save_path):
     def evaluate(server_round: int, parameters, config):
         # Save model
 
-        print(f"INFO :      server_round: {server_round}")
+        print(f"INFO :      server round: {server_round}")
         if server_round != 0 and (
             server_round == total_round or server_round % save_every_round == 0
         ):
@@ -37,6 +39,7 @@ def get_evaluate_fn(model_cfg, save_every_round, total_round, save_path):
 
     return evaluate
 
+
 def get_on_fit_config(save_path):
     """Return a function that will be used to construct the config that the client's
     fit() method will receive."""
@@ -49,6 +52,7 @@ def get_on_fit_config(save_path):
 
     return fit_config_fn
 
+
 def fit_weighted_average(metrics):
     """Aggregate (federated) evaluation metrics."""
     # Multiply accuracy of each client by number of examples used
@@ -56,8 +60,9 @@ def fit_weighted_average(metrics):
     examples = [num_examples for num_examples, _ in metrics]
     avg_loss = sum(losses) / sum(examples)
 
-    print(f"INFO :      train_loss: {avg_loss:.6f}")
+    print(f"INFO :      train loss: {avg_loss:.6f}")
     return {"train_loss": avg_loss}
+
 
 def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
@@ -76,8 +81,9 @@ def server_fn(context: Context):
     init_model_parameters = get_parameters(init_model)
     init_model_parameters = ndarrays_to_parameters(init_model_parameters)
 
-    for name, param in init_model.named_parameters():
-        print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
+    # Print model info
+    # for name, param in init_model.named_parameters():
+    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
     print_trainable_params(init_model)
 
     # Define strategy
@@ -97,6 +103,7 @@ def server_fn(context: Context):
     config = ServerConfig(num_rounds=num_rounds)
 
     return ServerAppComponents(strategy=strategy, config=config)
+
 
 # Create ServerApp
 app = ServerApp(server_fn=server_fn)
