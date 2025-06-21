@@ -50,7 +50,6 @@ def set_parameters(model, parameters: NDArrays) -> None:
     print_state_dict_size(state_dict, label="[Download Commm.]")
 
 
-
 def get_parameters(model) -> NDArrays:
     """Return the parameters of the current net."""
     state_dict = get_peft_model_state_dict(model)
