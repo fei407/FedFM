@@ -28,36 +28,38 @@ serverapp = "fedfm.server_app:app"
 clientapp = "fedfm.client_app:app"
 
 [tool.flwr.app.config]
-# FL
-num-server-rounds       = 3
-fraction-fit            = 1
-local-epochs            = 1
-learning-rate           = 1e-4
-# Clents
-min-available-clients   = 1
-min-fit-clients         = 1
-min-evaluate-clients    = 1
-# Model & Datasets
-model-name              = "prajjwal1/bert-tiny"
-num-labels              = 2
-dataset-name            = "stanfordnlp/imdb"
-data-distribution       = "iid"
-niid-alpha              = 1000
-# PEFT
-peft-name               = "fedit"
-peft-rank               = 16
-peft-inserted-modules   = "query,value"
+num-server-rounds = 3
+strategy.fraction-fit = 1
+strategy.fraction-evaluate = 0.0
+
+dataset.name = "vicgalle/alpaca-gpt4"
+model.name = "meta-llama/Llama-3.2-1B-Instruct"
+model.lora.peft-lora-r = 32
+model.lora.peft-lora-alpha = 64
+
+train.save-every-round = 3
+train.learning-rate-max = 5e-5
+train.learning-rate-min = 1e-6
+train.seq-length = 512
+train.training-arguments.output-dir = ""
+train.training-arguments.learning-rate = ""
+train.training-arguments.per-device-train-batch-size = 4
+train.training-arguments.gradient-accumulation-steps = 1
+train.training-arguments.logging-steps = 10
+train.training-arguments.num-train-epochs = 1
+train.training-arguments.max-steps = 10
+train.training-arguments.save-steps = 1000
+train.training-arguments.save-total-limit = 10
+train.training-arguments.gradient-checkpointing = true
+train.training-arguments.lr-scheduler-type = "constant"
 
 [tool.flwr.federations]
-default = "localhost-gpu"
+default = "local-simulation"
 
-[tool.flwr.federations.localhost]
-options.num-supernodes = 1
-
-[tool.flwr.federations.localhost-gpu]
-options.num-supernodes = 1
-options.backend.client-resources.num-cpus = 2 # each ClientApp assumes to use 4CPUs
-options.backend.client-resources.num-gpus = 0.5 # at most 4 ClientApps will run in a given GPU
+[tool.flwr.federations.local-simulation]
+options.num-supernodes = 20
+options.backend.client-resources.num-cpus = 8
+options.backend.client-resources.num-gpus = 1.0
 
 [tool.flwr.federations.local-deployment]
 address = "127.0.0.1:9093"

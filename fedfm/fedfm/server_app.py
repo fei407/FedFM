@@ -1,76 +1,97 @@
-"""fedfm: A Flower / HuggingFace app."""
+"""flowertune-llm: A Flower / FlowerTune app."""
+
+import os
+from datetime import datetime
 
 from flwr.common import Context, ndarrays_to_parameters
+from flwr.common.config import unflatten_dict
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
+from omegaconf import DictConfig
 
-from transformers import AutoModelForSequenceClassification
+from .utils import print_trainable_params
 
-from .utils import set_seed, print_trainable_params
-from peft import LoraConfig, get_peft_model
+from .models import get_model, get_parameters, set_parameters
+from .dataset import replace_keys
 
-def aggregate_accuracy(results):
-    accuracies = [metrics["accuracy"] * num_examples for num_examples, metrics in results]
-    total_samples = sum(num_examples for num_examples, _ in results)
+# Get function that will be executed by the strategy's evaluate() method
+# Here we use it to save global model checkpoints
+def get_evaluate_fn(model_cfg, save_every_round, total_round, save_path):
+    """Return an evaluation function for saving global model."""
 
-    aggregated_accuracy = sum(accuracies) / total_samples if total_samples > 0 else 0.0
+    def evaluate(server_round: int, parameters, config):
+        # Save model
 
-    print(f"[DEBUG] Aggregated Accuracy: {aggregated_accuracy:.4f}")
+        print(f"INFO :      server_round: {server_round}")
+        if server_round != 0 and (
+            server_round == total_round or server_round % save_every_round == 0
+        ):
+            # Init model
+            model = get_model(model_cfg)
+            set_parameters(model, parameters)
 
-    return {"accuracy": aggregated_accuracy}
+            model.save_pretrained(f"{save_path}/peft_{server_round}")
+            print(f"INFO :      model is saved at'{save_path}/peft_{server_round}'")
+
+        return 0.0, {}
+
+    return evaluate
+
+def get_on_fit_config(save_path):
+    """Return a function that will be used to construct the config that the client's
+    fit() method will receive."""
+
+    def fit_config_fn(server_round: int):
+        fit_config = {}
+        fit_config["current_round"] = server_round
+        fit_config["save_path"] = save_path
+        return fit_config
+
+    return fit_config_fn
+
+def fit_weighted_average(metrics):
+    """Aggregate (federated) evaluation metrics."""
+    # Multiply accuracy of each client by number of examples used
+    losses = [num_examples * m["train_loss"] for num_examples, m in metrics]
+    examples = [num_examples for num_examples, _ in metrics]
+    avg_loss = sum(losses) / sum(examples)
+
+    print(f"INFO :      train_loss: {avg_loss:.6f}")
+    return {"train_loss": avg_loss}
 
 def server_fn(context: Context):
+    """Construct components that set the ServerApp behaviour."""
+    # Create output directory given current timestamp
+    current_time = datetime.now()
+    folder_name = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    save_path = os.path.join(os.getcwd(), f"FedFM-results/{folder_name}")
+    os.makedirs(save_path, exist_ok=True)
+
     # Read from config
-    set_seed(42)
+    num_rounds = context.run_config["num-server-rounds"]
+    cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
 
-    num_rounds              = context.run_config["num-server-rounds"]
-    min_available_clients   = context.run_config["min-available-clients"]
-    min_fit_clients         = context.run_config["min-fit-clients"]
-    min_evaluate_clients    = context.run_config["min-evaluate-clients"]
-    fraction_fit            = context.run_config["fraction-fit"]
-    model_name              = context.run_config["model-name"]
-    num_labels              = context.run_config["num-labels"]
+    # Get initial model weights
+    init_model = get_model(cfg.model)
+    init_model_parameters = get_parameters(init_model)
+    init_model_parameters = ndarrays_to_parameters(init_model_parameters)
 
-    peft_name               = context.run_config["peft-name"]
-    peft_rank               = context.run_config["peft-rank"]
-    peft_inserted_modules   = context.run_config["peft-inserted-modules"]
-
-    net = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
-
-    peft_inserted_modules = [m.strip() for m in peft_inserted_modules.split(",")]
-    task_type = "SEQ_CLS"
-    if peft_name == "fedfft":
-        net = net
-    elif peft_name == "fedit":
-        peft_config = LoraConfig(
-            r=peft_rank,
-            lora_alpha=peft_rank,
-            lora_dropout=0.05,
-            target_modules=peft_inserted_modules,
-            task_type=task_type,
-        )
-        net = get_peft_model(net, peft_config)
-    else:
-        raise ValueError(f"This [{peft_name}] is a undefined fine-tuning method! Please choose: 'fedfft', 'fedit' ,or 'flash'.")
-
-    for name, param in net.named_parameters():
+    for name, param in init_model.named_parameters():
         print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
-
-    # Print trainbale_params
-    print_trainable_params(net)
-
-    initial_weights = [val.cpu().numpy() for _, val in net.state_dict().items()]
-    initial_parameters = ndarrays_to_parameters(initial_weights)
+    print_trainable_params(init_model)
 
     # Define strategy
     strategy = FedAvg(
-        fraction_fit=fraction_fit,
-        fraction_evaluate=0.0,
-        initial_parameters=initial_parameters,
-        min_available_clients=min_available_clients,
-        min_fit_clients=min_fit_clients,
-        min_evaluate_clients=min_evaluate_clients,
-        # evaluate_metrics_aggregation_fn=aggregate_accuracy,
+        fraction_fit=cfg.strategy.fraction_fit,
+        fraction_evaluate=cfg.strategy.fraction_evaluate,
+        on_fit_config_fn=get_on_fit_config(save_path),
+        fit_metrics_aggregation_fn=fit_weighted_average,
+        initial_parameters=init_model_parameters,
+        min_available_clients=1,
+        min_fit_clients=1,
+        evaluate_fn=get_evaluate_fn(
+            cfg.model, cfg.train.save_every_round, num_rounds, save_path
+        ),
     )
 
     config = ServerConfig(num_rounds=num_rounds)
