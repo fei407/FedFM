@@ -1,6 +1,7 @@
 """flowertune-llm: A Flower / FlowerTune app."""
 
 import os
+import random
 from datetime import datetime
 
 from flwr.common import Context, ndarrays_to_parameters
@@ -9,11 +10,10 @@ from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from omegaconf import DictConfig
 
-from .utils import print_trainable_params
+from .utils import print_trainable_params, set_seed
 
 from .models import get_model, get_parameters, set_parameters
 from .dataset import replace_keys
-
 
 # From: https://github.com/adap/flower/tree/main/examples/flowertune-llm
 # Get function that will be executed by the strategy's evaluate() method
@@ -66,10 +66,12 @@ def fit_weighted_average(metrics):
 
 def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
+    # set_seed(42)
+
     # Create output directory given current timestamp
     current_time = datetime.now()
     folder_name = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    save_path = os.path.join(os.getcwd(), f"FedFM-results/{folder_name}")
+    save_path = os.path.join(os.getcwd(), f"results/{folder_name}")
     os.makedirs(save_path, exist_ok=True)
 
     # Read from config
@@ -82,8 +84,8 @@ def server_fn(context: Context):
     init_model_parameters = ndarrays_to_parameters(init_model_parameters)
 
     # Print model info
-    # for name, param in init_model.named_parameters():
-    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
+    for name, param in init_model.named_parameters():
+        print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
     print_trainable_params(init_model)
 
     # Define strategy
