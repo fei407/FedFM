@@ -30,7 +30,10 @@ RUN pip install \
     peft==0.14.0 \
     datasets==3.1.0 \
     scikit-learn==1.6.1 \
-    sentencepiece==0.2.0
+    sentencepiece==0.2.0 \
+    evaluate==0.4.0 \
+    omegaconf==2.3.0 \
+    trl==0.19.0
 
 WORKDIR /app
 

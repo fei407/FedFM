@@ -3,8 +3,10 @@ torchvision==0.21.0
 torchaudio==2.6.0
 flwr==1.19.0
 flwr_datasets==0.5.0
-transformers==4.50.0
+transformers==4.52.4
 peft==0.14.0
 datasets==3.1.0
 scikit-learn==1.6.1
 evaluate==0.4.0
+omegaconf==2.3.0
+trl==0.19.0

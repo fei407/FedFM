@@ -52,6 +52,8 @@ train.training-arguments.save-steps = 1000
 train.training-arguments.save-total-limit = 10
 train.training-arguments.gradient-checkpointing = true
 train.training-arguments.lr-scheduler-type = "constant"
+train.training-arguments.bf16 = false
+train.training-arguments.fp16 = false
 
 [tool.flwr.federations]
 default = "local-simulation"
