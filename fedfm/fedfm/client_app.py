@@ -86,6 +86,12 @@ class FlowerClient(NumPyClient):
                 processing_class=self.tokenizer,
             )
 
+            dl = trainer.get_train_dataloader()
+            for i, batch in enumerate(dl):
+                print(f"Batch {i}: input_ids.shape = {batch['input_ids'].shape}")
+                if i >= 5:
+                    break
+
             # Do local training
             results = trainer.train()
 
