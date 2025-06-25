@@ -22,7 +22,7 @@ from .dataset import (
 
 from .models import (
     cosine_annealing,
-    get_local_model,
+    get_model,
     set_local_parameters,
     get_local_parameters,
 )
@@ -45,7 +45,8 @@ class FlowerClient(NumPyClient):
              trainset,
              tokenizer,
              num_rounds,
-             local_rank,
+             rank_choices,
+             group_id,
     ): # pylint: disable=too-many-arguments
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_cfg = train_cfg
@@ -59,7 +60,8 @@ class FlowerClient(NumPyClient):
         self.trainset = trainset
         self.tokenizer = tokenizer
         # instantiate model
-        self.model = get_local_model(model_cfg, local_rank)
+        self.model = get_model(model_cfg, rank_choices, group_id)
+        self.group_id = group_id
 
         print_trainable_params(self.model)
 
@@ -68,7 +70,7 @@ class FlowerClient(NumPyClient):
     ) -> Tuple[NDArrays, int, Dict]:
         try:
             """Implement distributed fit function for a given client."""
-            set_local_parameters(self.model, parameters)
+            set_local_parameters(self.model, parameters, self.group_id)
 
             new_lr = cosine_annealing(
                 int(config["current_round"]),
@@ -101,7 +103,7 @@ class FlowerClient(NumPyClient):
             results = trainer.train()
 
             return (
-                get_local_parameters(self.model),
+                get_local_parameters(self.model, self.group_id),
                 len(self.trainset),
                 {"train_loss": results.training_loss},
             )
@@ -126,8 +128,11 @@ def client_fn(context: Context):
     rank_choices = [int(r) for r in rank_choices_str.split(",")]
 
     rank_choices_map = dict(zip(edge_devices, rank_choices))
-    local_rank = rank_choices_map[edge_device]
-    print(f"INFO :      Device: {edge_device}, Using local_rank: {local_rank}")
+    rank = rank_choices_map[edge_device]
+    device_index = edge_devices.index(edge_device)
+    group_id = f"group_{device_index}"
+
+    print(f"INFO :      Device: {edge_device} | Group: {group_id} | Rank: {rank}")
 
     # Let's get the client partition
     client_trainset = load_data(partition_id, num_partitions, cfg.dataset.name)
@@ -139,7 +144,8 @@ def client_fn(context: Context):
         client_trainset,
         tokenizer,
         num_rounds,
-        local_rank,
+        rank_choices,
+        group_id,
     ).to_client()
 
 
