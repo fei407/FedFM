@@ -22,10 +22,12 @@ from .dataset import (
 
 from .models import (
     cosine_annealing,
-    get_model,
-    set_parameters,
-    get_parameters,
+    get_local_model,
+    set_local_parameters,
+    get_local_parameters,
 )
+
+from .utils import print_trainable_params
 
 # Avoid warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -42,7 +44,8 @@ class FlowerClient(NumPyClient):
              train_cfg: DictConfig,
              trainset,
              tokenizer,
-             num_rounds
+             num_rounds,
+             local_rank,
     ): # pylint: disable=too-many-arguments
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_cfg = train_cfg
@@ -56,14 +59,16 @@ class FlowerClient(NumPyClient):
         self.trainset = trainset
         self.tokenizer = tokenizer
         # instantiate model
-        self.model = get_model(model_cfg)
+        self.model = get_local_model(model_cfg, local_rank)
+
+        print_trainable_params(self.model)
 
     def fit(
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, int, Dict]:
         try:
             """Implement distributed fit function for a given client."""
-            set_parameters(self.model, parameters)
+            set_local_parameters(self.model, parameters)
 
             new_lr = cosine_annealing(
                 int(config["current_round"]),
@@ -89,14 +94,14 @@ class FlowerClient(NumPyClient):
             dl = trainer.get_train_dataloader()
             for i, batch in enumerate(dl):
                 print(f"Batch {i}: input_ids.shape = {batch['input_ids'].shape}")
-                if i >= 5:
+                if i >= 4:
                     break
 
             # Do local training
             results = trainer.train()
 
             return (
-                get_parameters(self.model),
+                get_local_parameters(self.model),
                 len(self.trainset),
                 {"train_loss": results.training_loss},
             )
@@ -108,10 +113,21 @@ class FlowerClient(NumPyClient):
 
 def client_fn(context: Context):
     """Create a Flower client representing a single organization."""
+    edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
+
+    edge_device = context.node_config["edge-device"]
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     num_rounds = context.run_config["num-server-rounds"]
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
+
+
+    rank_choices_str = cfg.model.lora.rank_choices
+    rank_choices = [int(r) for r in rank_choices_str.split(",")]
+
+    rank_choices_map = dict(zip(edge_devices, rank_choices))
+    local_rank = rank_choices_map[edge_device]
+    print(f"INFO :      Device: {edge_device}, Using local_rank: {local_rank}")
 
     # Let's get the client partition
     client_trainset = load_data(partition_id, num_partitions, cfg.dataset.name)
@@ -123,6 +139,7 @@ def client_fn(context: Context):
         client_trainset,
         tokenizer,
         num_rounds,
+        local_rank,
     ).to_client()
 
 

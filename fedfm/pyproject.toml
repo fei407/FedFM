@@ -28,14 +28,14 @@ serverapp = "fedfm.server_app:app"
 clientapp = "fedfm.client_app:app"
 
 [tool.flwr.app.config]
-num-server-rounds = 3
+num-server-rounds = 1
 strategy.fraction-fit = 1
 strategy.fraction-evaluate = 0.0
 
 dataset.name = "vicgalle/alpaca-gpt4"
 model.name = "HuggingFaceTB/SmolLM2-135M"
-model.lora.peft-lora-r = 16
-model.lora.peft-lora-alpha = 32
+model.lora.rank-choices = "4,32,64"
+model.lora.rank-nums = "5,4,1"
 
 train.save-every-round = 3
 train.learning-rate-max = 5e-4

@@ -1,7 +1,6 @@
 """flowertune-llm: A Flower / FlowerTune app."""
 
 import os
-import random
 from datetime import datetime
 
 from flwr.common import Context, ndarrays_to_parameters
@@ -10,15 +9,15 @@ from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.strategy import FedAvg
 from omegaconf import DictConfig
 
-from .utils import print_trainable_params, set_seed
+from .utils import print_trainable_params
 
-from .models import get_model, get_parameters, set_parameters
+from .models import get_global_model, get_global_parameters, set_global_parameters
 from .dataset import replace_keys
 
 # From: https://github.com/adap/flower/tree/main/examples/flowertune-llm
 # Get function that will be executed by the strategy's evaluate() method
 # Here we use it to save global model checkpoints
-def get_evaluate_fn(model_cfg, save_every_round, total_round, save_path):
+def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path):
     """Return an evaluation function for saving global model."""
 
     def evaluate(server_round: int, parameters, config):
@@ -29,8 +28,22 @@ def get_evaluate_fn(model_cfg, save_every_round, total_round, save_path):
             server_round == total_round or server_round % save_every_round == 0
         ):
             # Init model
-            model = get_model(model_cfg)
-            set_parameters(model, parameters)
+            model = get_global_model(model_cfg, rank_choices)
+
+            print("[INFO] Inspecting parameters...")
+
+            if isinstance(parameters, list):
+                print(f"[INFO] parameters is a list of length: {len(parameters)}")
+                for i, param in enumerate(parameters):
+                    print(
+                        f"  - param[{i}]: type={type(param)}, shape={param.shape if isinstance(param, np.ndarray) else 'N/A'}")
+                    print(
+                        f"    values (first 3 elements): {param.flatten()[:3] if isinstance(param, np.ndarray) else param}")
+            else:
+                print(f"[ERROR] Unexpected type: {type(parameters)} — expected List of NDArrays")
+                return
+
+            set_global_parameters(model, parameters)
 
             model.save_pretrained(f"{save_path}/peft_{server_round}")
             print(f"INFO :      model is saved at'{save_path}/peft_{server_round}'")
@@ -66,7 +79,7 @@ def fit_weighted_average(metrics):
 
 def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
-    # set_seed(42)
+    edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
 
     # Create output directory given current timestamp
     current_time = datetime.now()
@@ -79,14 +92,26 @@ def server_fn(context: Context):
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
 
     # Get initial model weights
-    init_model = get_model(cfg.model)
-    init_model_parameters = get_parameters(init_model)
+    rank_choices_str = cfg.model.lora.rank_choices
+    rank_choices = [int(r) for r in rank_choices_str.split(",")]
+    rank_nums_str = cfg.model.lora.rank_nums
+    rank_nums = [int(r) for r in rank_nums_str.split(",")]
+
+    rank_choices_map = dict(zip(edge_devices, rank_choices))
+    rank_nums_map = dict(zip(edge_devices, rank_nums))
+    for device_name in edge_devices:
+        rank = rank_choices_map[device_name]
+        num = rank_nums_map[device_name]
+        print(f"INFO :      Fine-tuning on [{device_name}] with rank [{rank}], number of devices: [{num}]")
+
+    init_model = get_global_model(cfg.model, rank_choices)
+    init_model_parameters = get_global_parameters(init_model)
     init_model_parameters = ndarrays_to_parameters(init_model_parameters)
 
     # Print model info
-    for name, param in init_model.named_parameters():
-        print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
-    print_trainable_params(init_model)
+    # for name, param in init_model.named_parameters():
+    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}")
+    # print_trainable_params(init_model)
 
     # Define strategy
     strategy = FedAvg(
@@ -95,10 +120,10 @@ def server_fn(context: Context):
         on_fit_config_fn=get_on_fit_config(save_path),
         fit_metrics_aggregation_fn=fit_weighted_average,
         initial_parameters=init_model_parameters,
-        min_available_clients=1,
-        min_fit_clients=1,
+        min_available_clients=2,
+        min_fit_clients=2,
         evaluate_fn=get_evaluate_fn(
-            cfg.model, cfg.train.save_every_round, num_rounds, save_path
+            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path
         ),
     )
 
