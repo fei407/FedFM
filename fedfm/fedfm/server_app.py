@@ -25,6 +25,7 @@ from omegaconf import DictConfig
 from .models import get_model, get_global_parameters, set_global_parameters
 from .dataset import replace_keys
 from .hetero import update_global_model, custom_aggregate
+from .utils import set_seed
 
 # From: https://github.com/adap/flower/tree/main/examples/flowertune-llm
 
@@ -91,7 +92,7 @@ class CustomFedAvg(FedAvg):
 
 # Get function that will be executed by the strategy's evaluate() method
 # Here we use it to save global model checkpoints
-def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path, peft_name, scaling_method, peft_init):
+def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path, peft_name, scaling_method, peft_init, fl_method):
     """Return an evaluation function for saving global model."""
 
     def evaluate(server_round: int, parameters, config):
@@ -104,7 +105,7 @@ def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save
             # Init model
             model = get_model(model_cfg, rank_choices, "group_2", peft_name, scaling_method, peft_init)
 
-            set_global_parameters(model, parameters, peft_name)
+            set_global_parameters(model, parameters, peft_name, fl_method)
 
             model.save_pretrained(f"{save_path}/peft_{server_round}")
             print(f"INFO :      model is saved at'{save_path}/peft_{server_round}'")
@@ -140,6 +141,8 @@ def fit_weighted_average(metrics):
 
 def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
+    set_seed(42)
+
     edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
 
     # Read from config
@@ -184,8 +187,9 @@ def server_fn(context: Context):
         initial_parameters=init_model_parameters,
         min_available_clients=1,
         min_fit_clients=1,
+        min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
-            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init
+            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init, cfg.fl.fl_method
         ),
         global_model=global_model,
         rank_choices=rank_choices,

@@ -28,6 +28,8 @@ serverapp = "fedfm.server_app:app"
 clientapp = "fedfm.client_app:app"
 
 [tool.flwr.app.config]
+grpc-max-message-length = 1073741824
+enable-parameter-chaining = true
 num-server-rounds = 2
 strategy.fraction-fit = 1
 strategy.fraction-evaluate = 0.0

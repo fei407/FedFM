@@ -3,6 +3,7 @@
 import os
 import warnings
 from typing import Dict, Tuple
+import traceback
 
 from omegaconf import DictConfig
 
@@ -27,7 +28,7 @@ from .models import (
     get_local_parameters,
 )
 
-from .utils import print_trainable_params
+from .utils import print_trainable_params, set_seed
 
 # Avoid warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -75,53 +76,44 @@ class FlowerClient(NumPyClient):
     def fit(
         self, parameters: NDArrays, config: Dict[str, Scalar]
     ) -> Tuple[NDArrays, int, Dict]:
-        try:
-            """Implement distributed fit function for a given client."""
-            set_local_parameters(self.model, parameters, self.group_id, self.peft_name, self.fl_method)
+        """Implement distributed fit function for a given client."""
+        set_local_parameters(self.model, parameters, self.group_id, self.peft_name, self.fl_method)
 
-            new_lr = cosine_annealing(
-                int(config["current_round"]),
-                self.num_rounds,
-                self.train_cfg.learning_rate_max,
-                self.train_cfg.learning_rate_min,
-            )
+        new_lr = cosine_annealing(
+            int(config["current_round"]),
+            self.num_rounds,
+            self.train_cfg.learning_rate_max,
+            self.train_cfg.learning_rate_min,
+        )
 
-            self.training_arguments.learning_rate = new_lr
-            self.training_arguments.output_dir = config["save_path"]
+        self.training_arguments.learning_rate = new_lr
+        self.training_arguments.output_dir = config["save_path"]
 
-            self.model.enable_input_require_grads()
-            self.model.config.use_cache = False
+        self.model.enable_input_require_grads()
+        self.model.config.use_cache = False
 
-            # Construct trainer
-            trainer = SFTTrainer(
-                model=self.model,
-                args=self.training_arguments,
-                train_dataset=self.trainset,
-                processing_class=self.tokenizer,
-            )
+        # Construct trainer
+        trainer = SFTTrainer(
+            model=self.model,
+            args=self.training_arguments,
+            train_dataset=self.trainset,
+            processing_class=self.tokenizer,
+        )
 
-            dl = trainer.get_train_dataloader()
-            for i, batch in enumerate(dl):
-                print(f"Batch {i}: input_ids.shape = {batch['input_ids'].shape}")
-                if i >= 4:
-                    break
+        # Do local training
+        results = trainer.train()
 
-            # Do local training
-            results = trainer.train()
-
-            return (
-                get_local_parameters(self.model, self.group_id, self.peft_name),
-                len(self.trainset),
-                {"train_loss": results.training_loss},
-            )
-
-        except Exception as e:
-            print("Training failed!:", str(e))
-            raise e
+        return (
+            get_local_parameters(self.model, self.group_id, self.peft_name),
+            len(self.trainset),
+            {"train_loss": results.training_loss},
+        )
 
 
 def client_fn(context: Context):
     """Create a Flower client representing a single organization."""
+    set_seed(42)
+
     edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
 
     edge_device = context.node_config["edge-device"]

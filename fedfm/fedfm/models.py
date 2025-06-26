@@ -131,19 +131,30 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
 
         if peft_init != "vanilla":
             orthogonal_lora_init(model, peft_init)
-            check_lora_A_orthogonality(model)
+            # check_lora_A_orthogonality(model)
+
+        for name, param in model.named_parameters():
+            if "lora_A" in name:
+                param.requires_grad = False
     else:
         raise ValueError("Unknown local training method.")
 
     return model
 
-def set_global_parameters(model, parameters: NDArrays, peft_name) -> None:
+def set_global_parameters(model, parameters: NDArrays, peft_name, fl_method) -> None:
     """Change the parameters of the model using the given ones."""
     full_state_dict = model.state_dict()
     if peft_name == "fft":
         selected_keys = list(full_state_dict.keys())
     elif peft_name == "lora":
-        selected_keys = [k for k in full_state_dict if "lora_" in k and "group_" in k]
+        if fl_method == "nbias":
+            selected_keys = [
+                k.replace(".lora_A.group_0", ".base_layer")
+                for k in full_state_dict
+                if "lora_A.group_0" in k
+            ]
+        else:
+            selected_keys = [k for k in full_state_dict if "lora_" in k and "group_" in k]
     elif peft_name == "ffa":
         selected_keys = [k for k in full_state_dict if "lora_B" in k and "group_" in k]
     else:
