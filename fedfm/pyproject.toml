@@ -39,6 +39,7 @@ model.lora.rank-nums = "5,4,1"
 
 fl.fl-method = "svd"
 fl.peft-name = "lora"
+fl.peft-init = "vanilla"
 fl.scaling-method = "normal"
 fl.ridge-lamda = 1e-5
 fl.solve-method = "simple"

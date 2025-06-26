@@ -47,6 +47,10 @@ class FlowerClient(NumPyClient):
              num_rounds,
              rank_choices,
              group_id,
+             peft_name,
+             fl_method,
+             scaling_method,
+             peft_init,
     ): # pylint: disable=too-many-arguments
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_cfg = train_cfg
@@ -55,13 +59,16 @@ class FlowerClient(NumPyClient):
             dataset_text_field = "text",
             max_length = train_cfg.seq_length,
             completion_only_loss = True,
+            report_to=[],
         )
         self.num_rounds = num_rounds
         self.trainset = trainset
         self.tokenizer = tokenizer
         # instantiate model
-        self.model = get_model(model_cfg, rank_choices, group_id)
+        self.model = get_model(model_cfg, rank_choices, group_id, peft_name, scaling_method, peft_init)
         self.group_id = group_id
+        self.peft_name = peft_name
+        self.fl_method = fl_method
 
         print_trainable_params(self.model)
 
@@ -70,7 +77,7 @@ class FlowerClient(NumPyClient):
     ) -> Tuple[NDArrays, int, Dict]:
         try:
             """Implement distributed fit function for a given client."""
-            set_local_parameters(self.model, parameters, self.group_id)
+            set_local_parameters(self.model, parameters, self.group_id, self.peft_name, self.fl_method)
 
             new_lr = cosine_annealing(
                 int(config["current_round"]),
@@ -103,7 +110,7 @@ class FlowerClient(NumPyClient):
             results = trainer.train()
 
             return (
-                get_local_parameters(self.model, self.group_id),
+                get_local_parameters(self.model, self.group_id, self.peft_name),
                 len(self.trainset),
                 {"train_loss": results.training_loss},
             )
@@ -132,7 +139,8 @@ def client_fn(context: Context):
     device_index = edge_devices.index(edge_device)
     group_id = f"group_{device_index}"
 
-    print(f"INFO :      Device: {edge_device} | Group: {group_id} | Rank: {rank}")
+    if cfg.fl.peft_name != "fft":
+        print(f"INFO :      Device: {edge_device} | Group: {group_id} | Rank: {rank}")
 
     # Let's get the client partition
     client_trainset = load_data(partition_id, num_partitions, cfg.dataset.name)
@@ -146,6 +154,10 @@ def client_fn(context: Context):
         num_rounds,
         rank_choices,
         group_id,
+        cfg.fl.peft_name,
+        cfg.fl.fl_method,
+        cfg.fl.scaling_method,
+        cfg.fl.peft_init,
     ).to_client()
 
 

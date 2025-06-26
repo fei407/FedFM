@@ -4,6 +4,7 @@ import torch
 import os
 from datetime import datetime
 from typing import Optional, Union
+
 from flwr.common import (
     Context,
     Parameters,
@@ -17,7 +18,7 @@ from flwr.common.logger import log
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
-from flwr.server.strategy.aggregate import aggregate, aggregate_inplace
+
 from logging import WARNING
 from omegaconf import DictConfig
 
@@ -74,7 +75,7 @@ class CustomFedAvg(FedAvg):
         aggregated_params = custom_aggregate(client_param_dicts, num_examples_list, self.global_model, self.fl_method, self.peft_name, self.scaling_method, self.rmax)
         update_global_model(self.global_model, aggregated_params, self.fl_method, self.peft_name, self.rank_choices, self.solve_method, self.ridge_lamda, self.scaling_method)
 
-        aggregated_ndarrays = get_global_parameters(self.global_model)
+        aggregated_ndarrays = get_global_parameters(self.global_model, self.peft_name, self.fl_method)
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
         ## Custom Logic for Hetero-aggregation ##
 
@@ -90,7 +91,7 @@ class CustomFedAvg(FedAvg):
 
 # Get function that will be executed by the strategy's evaluate() method
 # Here we use it to save global model checkpoints
-def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path):
+def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path, peft_name, scaling_method, peft_init):
     """Return an evaluation function for saving global model."""
 
     def evaluate(server_round: int, parameters, config):
@@ -101,9 +102,9 @@ def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save
             server_round == total_round or server_round % save_every_round == 0
         ):
             # Init model
-            model = get_model(model_cfg, rank_choices, "group_2")
+            model = get_model(model_cfg, rank_choices, "group_2", peft_name, scaling_method, peft_init)
 
-            set_global_parameters(model, parameters)
+            set_global_parameters(model, parameters, peft_name)
 
             model.save_pretrained(f"{save_path}/peft_{server_round}")
             print(f"INFO :      model is saved at'{save_path}/peft_{server_round}'")
@@ -141,15 +142,17 @@ def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
     edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
 
-    # Create output directory given current timestamp
-    current_time = datetime.now()
-    folder_name = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    save_path = os.path.join(os.getcwd(), f"results/{folder_name}")
-    os.makedirs(save_path, exist_ok=True)
-
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
+
+
+    # Create output directory given current timestamp
+    current_time = datetime.now()
+    timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
+    folder_name = f"{cfg.fl.peft_name}_{cfg.fl.fl_method}_{timestamp}"
+    save_path = os.path.join(os.getcwd(), f"results/{folder_name}")
+    os.makedirs(save_path, exist_ok=True)
 
     # Get initial model weights
     rank_choices_str = cfg.model.lora.rank_choices
@@ -160,13 +163,16 @@ def server_fn(context: Context):
 
     rank_choices_map = dict(zip(edge_devices, rank_choices))
     rank_nums_map = dict(zip(edge_devices, rank_nums))
+
     for device_name in edge_devices:
         rank = rank_choices_map[device_name]
         num = rank_nums_map[device_name]
-        print(f"INFO :      Fine-tuning on [{device_name}] with rank [{rank}], number of devices: [{num}]")
+        if cfg.fl.peft_name != "fft":
+            print(f"INFO :      Fine-tuning on [{device_name}] with rank [{rank}], number of devices: [{num}]")
 
-    global_model = get_model(cfg.model, rank_choices, "group_2")
-    init_model_ndarrays = get_global_parameters(global_model)
+    global_model = get_model(cfg.model, rank_choices, "group_2", cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init)
+
+    init_model_ndarrays = get_global_parameters(global_model, cfg.fl.peft_name, cfg.fl.fl_method)
     init_model_parameters = ndarrays_to_parameters(init_model_ndarrays)
 
     # Define strategy
@@ -176,10 +182,10 @@ def server_fn(context: Context):
         on_fit_config_fn=get_on_fit_config(save_path),
         fit_metrics_aggregation_fn=fit_weighted_average,
         initial_parameters=init_model_parameters,
-        min_available_clients=2,
-        min_fit_clients=2,
+        min_available_clients=1,
+        min_fit_clients=1,
         evaluate_fn=get_evaluate_fn(
-            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path
+            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init
         ),
         global_model=global_model,
         rank_choices=rank_choices,
