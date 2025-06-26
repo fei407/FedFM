@@ -185,9 +185,9 @@ def server_fn(context: Context):
         on_fit_config_fn=get_on_fit_config(save_path),
         fit_metrics_aggregation_fn=fit_weighted_average,
         initial_parameters=init_model_parameters,
-        min_available_clients=1,
-        min_fit_clients=1,
-        min_evaluate_clients=1,
+        # min_available_clients=1,
+        # min_fit_clients=1,
+        # min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
             cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init, cfg.fl.fl_method
         ),
