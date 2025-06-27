@@ -51,7 +51,6 @@ class FlowerClient(NumPyClient):
              peft_name,
              fl_method,
              scaling_method,
-             peft_init,
     ): # pylint: disable=too-many-arguments
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_cfg = train_cfg
@@ -66,7 +65,7 @@ class FlowerClient(NumPyClient):
         self.trainset = trainset
         self.tokenizer = tokenizer
         # instantiate model
-        self.model = get_model(model_cfg, rank_choices, group_id, peft_name, scaling_method, peft_init)
+        self.model = get_model(model_cfg, rank_choices, group_id, peft_name, scaling_method)
         self.group_id = group_id
         self.peft_name = peft_name
         self.fl_method = fl_method
@@ -114,7 +113,7 @@ def client_fn(context: Context):
     """Create a Flower client representing a single organization."""
     set_seed(42)
 
-    edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
+    edge_devices = ["agx-orin", "orin-nano", "rpi-5"]
 
     edge_device = context.node_config["edge-device"]
     partition_id = context.node_config["partition-id"]
@@ -122,8 +121,7 @@ def client_fn(context: Context):
     num_rounds = context.run_config["num-server-rounds"]
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
 
-
-    rank_choices_str = cfg.model.lora.rank_choices
+    rank_choices_str = cfg.fl.rank_choices
     rank_choices = [int(r) for r in rank_choices_str.split(",")]
 
     rank_choices_map = dict(zip(edge_devices, rank_choices))
@@ -149,7 +147,6 @@ def client_fn(context: Context):
         cfg.fl.peft_name,
         cfg.fl.fl_method,
         cfg.fl.scaling_method,
-        cfg.fl.peft_init,
     ).to_client()
 
 

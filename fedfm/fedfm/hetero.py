@@ -24,11 +24,16 @@ def solve_linear(A: torch.Tensor, W: torch.Tensor, method: str = 'least_squares'
     return B
 
 
-def custom_aggregate(client_param_dicts: List[Dict[str, torch.Tensor]], num_examples_list: List[int], init_model, fl_method, peft_name, scaling_method, rmax) -> Dict[str, torch.Tensor]:
+def custom_aggregate(client_param_dicts: List[Dict[str, torch.Tensor]], num_examples_list: List[int], global_model, fl_method, peft_name, scaling_method, rmax) -> Dict[str, torch.Tensor]:
 
     total_dataset_size = sum(num_examples_list)
-    global_state = init_model.state_dict()
+    global_state = global_model.state_dict()
     processed_clients_params = []
+
+    # for i, client_params in enumerate(client_param_dicts):
+    #     print(f"\nClient {i} parameter shapes:")
+    #     for k, v in client_params.items():
+    #         print(f"  {k}: {v.shape}")
 
     for client_dicts in client_param_dicts:
         received = client_dicts.copy()
@@ -106,6 +111,11 @@ def custom_aggregate(client_param_dicts: List[Dict[str, torch.Tensor]], num_exam
 
     aggregated_params = {k: torch.zeros_like(v) for k, v in processed_clients_params[0].items()}
 
+    # for i, client_params in enumerate(processed_clients_params):
+    #     print(f"\nClient {i} parameter shapes:")
+    #     for k, v in client_params.items():
+    #         print(f"  {k}: {v.shape}")
+
     for client_params, dataset_size in zip(processed_clients_params, num_examples_list):
         weight = dataset_size / total_dataset_size
         for k, v in client_params.items():
@@ -113,7 +123,7 @@ def custom_aggregate(client_param_dicts: List[Dict[str, torch.Tensor]], num_exam
 
     return aggregated_params
 
-def update_global_model(global_model, aggregated_params, fl_method,  peft_name, rank_choices, solve_method, ridge_lamda, scaling_method):
+def update_global_model(global_model, aggregated_params, fl_method,  peft_name, rank_choices, scaling_method):
     if peft_name == "lora" and fl_method == "zero-padding":
         start_time = time.time()
         reconstructed_params = {}
@@ -236,7 +246,7 @@ def update_global_model(global_model, aggregated_params, fl_method,  peft_name, 
                         f"Unknown scaling_method '{scaling_method}', choose from ['fixed','normal','sqrt'].")
 
                 # print(f"solve_method: {solve_method}")
-                B_T = solve_linear(A_init.T, value.T, solve_method, ridge_lamda)
+                B_T = solve_linear(A_init.T, value.T, "simple", 1e-5)
                 B = B_T.T
 
                 solved_params[key_B] = B / scaling

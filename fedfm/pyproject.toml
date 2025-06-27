@@ -36,15 +36,13 @@ strategy.fraction-evaluate = 0.0
 
 dataset.name = "vicgalle/alpaca-gpt4"
 model.name = "HuggingFaceTB/SmolLM2-135M"
-model.lora.rank-choices = "4,32,64"
-model.lora.rank-nums = "5,4,1"
+
+fl.rank-choices = "64,16,4"
+fl.device-nums = "1,4,5"
 
 fl.fl-method = "svd"
 fl.peft-name = "lora"
-fl.peft-init = "vanilla"
 fl.scaling-method = "normal"
-fl.ridge-lamda = 1e-5
-fl.solve-method = "simple"
 
 train.save-every-round = 3
 train.learning-rate-max = 5e-4

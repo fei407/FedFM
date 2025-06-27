@@ -31,7 +31,7 @@ from .utils import set_seed
 
 class CustomFedAvg(FedAvg):
     """FedAvg with custom parameter aggregation logic."""
-    def __init__(self, global_model, rank_choices, fl_method, peft_name, scaling_method, rmax, ridge_lamda, solve_method, *args, **kwargs):
+    def __init__(self, global_model, rank_choices, fl_method, peft_name, scaling_method, rmax, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.global_model = global_model
         self.rank_choices = rank_choices
@@ -39,8 +39,6 @@ class CustomFedAvg(FedAvg):
         self.peft_name = peft_name
         self.scaling_method = scaling_method
         self.rmax = rmax
-        self.ridge_lamda = ridge_lamda
-        self.solve_method = solve_method
 
     def aggregate_fit(
         self,
@@ -59,22 +57,36 @@ class CustomFedAvg(FedAvg):
         client_param_dicts = []
         num_examples_list = []
 
-        group_id = "group_2"
-        state_keys = [
-            k.replace(f".{group_id}", "")
-            for k in self.global_model.state_dict().keys()
-            if "lora_" in k and group_id in k
-        ]
+        full_state_dict = self.global_model.state_dict()
+        if self.peft_name == "fft":
+            selected_keys = list(full_state_dict.keys())
+        elif self.peft_name == "lora":
+            selected_keys = [k for k in full_state_dict if "lora_" in k and "group_0" in k]
+        elif self.peft_name == "ffa":
+            selected_keys = [k for k in full_state_dict if "lora_B" in k and "group_0" in k]
+        else:
+            raise ValueError(f"Invalid peft_name: {self.peft_name}. Please use 'fft', 'lora', or 'ffa'.")
 
         for _, fit_res in results:
             params = parameters_to_ndarrays(fit_res.parameters)
-            param_dict = {k: torch.tensor(v) for k, v in zip(state_keys, params)}
+            param_dict = {k: torch.tensor(v) for k, v in zip(selected_keys, params)}
             client_param_dicts.append(param_dict)
             num_examples_list.append(fit_res.num_examples)
 
+        if self.peft_name == "fft":
+            pass
+        else:
+            rank_to_idx = {r: i for i, r in enumerate(self.rank_choices)}
+            for i, params in enumerate(client_param_dicts):
+                rank = next((v.shape[1] for k, v in params.items() if 'lora_B' in k), None)
+                if rank not in rank_to_idx:
+                    raise ValueError(f"Client {i}: rank {rank} not in {self.rank_choices}")
+                gid = rank_to_idx[rank]
+                client_param_dicts[i] = {k.replace('group_0', f'group_{gid}'): v for k, v in params.items()}
+
         # hetero-aggragation and construction
         aggregated_params = custom_aggregate(client_param_dicts, num_examples_list, self.global_model, self.fl_method, self.peft_name, self.scaling_method, self.rmax)
-        update_global_model(self.global_model, aggregated_params, self.fl_method, self.peft_name, self.rank_choices, self.solve_method, self.ridge_lamda, self.scaling_method)
+        update_global_model(self.global_model, aggregated_params, self.fl_method, self.peft_name, self.rank_choices, self.scaling_method)
 
         aggregated_ndarrays = get_global_parameters(self.global_model, self.peft_name, self.fl_method)
         parameters_aggregated = ndarrays_to_parameters(aggregated_ndarrays)
@@ -92,7 +104,7 @@ class CustomFedAvg(FedAvg):
 
 # Get function that will be executed by the strategy's evaluate() method
 # Here we use it to save global model checkpoints
-def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path, peft_name, scaling_method, peft_init, fl_method):
+def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path, peft_name, scaling_method, fl_method):
     """Return an evaluation function for saving global model."""
 
     def evaluate(server_round: int, parameters, config):
@@ -103,7 +115,7 @@ def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save
             server_round == total_round or server_round % save_every_round == 0
         ):
             # Init model
-            model = get_model(model_cfg, rank_choices, "group_2", peft_name, scaling_method, peft_init)
+            model = get_model(model_cfg, rank_choices, "group_2", peft_name, scaling_method)
 
             set_global_parameters(model, parameters, peft_name, fl_method)
 
@@ -143,7 +155,7 @@ def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
     set_seed(42)
 
-    edge_devices = ["rpi-5", "orin-nano", "agx-orin"]
+    edge_devices = ["agx-orin", "orin-nano", "rpi-5"]
 
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
@@ -158,22 +170,29 @@ def server_fn(context: Context):
     os.makedirs(save_path, exist_ok=True)
 
     # Get initial model weights
-    rank_choices_str = cfg.model.lora.rank_choices
+    rank_choices_str = cfg.fl.rank_choices
     rank_choices = [int(r) for r in rank_choices_str.split(",")]
     rmax = max(rank_choices)
-    rank_nums_str = cfg.model.lora.rank_nums
-    rank_nums = [int(r) for r in rank_nums_str.split(",")]
+    device_nums_str = cfg.fl.device_nums
+    device_nums = [int(r) for r in device_nums_str.split(",")]
 
     rank_choices_map = dict(zip(edge_devices, rank_choices))
-    rank_nums_map = dict(zip(edge_devices, rank_nums))
+    device_nums_map = dict(zip(edge_devices, device_nums))
 
+    print(f"{'Device Name':^20} {'Rank':^10} {'Quantity':^10}")
+    print("-" * 42)
     for device_name in edge_devices:
         rank = rank_choices_map[device_name]
-        num = rank_nums_map[device_name]
-        if cfg.fl.peft_name != "fft":
-            print(f"INFO :      Fine-tuning on [{device_name}] with rank [{rank}], number of devices: [{num}]")
+        num = device_nums_map[device_name]
+        if cfg.fl.peft_name == "fft":
+            print(f"{device_name:^20} {'-':^10} {num:^10}")
+        else:
+            print(f"{device_name:^20} {rank:^10} {num:^10}")
 
-    global_model = get_model(cfg.model, rank_choices, "group_2", cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init)
+    global_model = get_model(cfg.model, rank_choices, "group_0", cfg.fl.peft_name, cfg.fl.scaling_method)
+
+    # for name, param in global_model.named_parameters():
+    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
 
     init_model_ndarrays = get_global_parameters(global_model, cfg.fl.peft_name, cfg.fl.fl_method)
     init_model_parameters = ndarrays_to_parameters(init_model_ndarrays)
@@ -189,7 +208,7 @@ def server_fn(context: Context):
         # min_fit_clients=1,
         # min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
-            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.peft_init, cfg.fl.fl_method
+            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.fl_method
         ),
         global_model=global_model,
         rank_choices=rank_choices,
@@ -197,8 +216,6 @@ def server_fn(context: Context):
         peft_name = cfg.fl.peft_name,
         scaling_method = cfg.fl.scaling_method,
         rmax=rmax,
-        ridge_lamda = cfg.fl.ridge_lamda,
-        solve_method = cfg.fl.solve_method,
     )
 
     config = ServerConfig(num_rounds=num_rounds)

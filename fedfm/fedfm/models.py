@@ -68,7 +68,7 @@ def cosine_annealing(
     return lrate_min + 0.5 * (lrate_max - lrate_min) * (1 + math.cos(cos_inner))
 
 
-def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, peft_name, scaling_method, peft_init):
+def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, peft_name, scaling_method):
     """Load model with appropriate quantization config and other optimizations.
     """
 
@@ -129,9 +129,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
 
         model.set_adapter(group_id)
 
-        if peft_init != "vanilla":
-            orthogonal_lora_init(model, peft_init)
-            # check_lora_A_orthogonality(model)
+        orthogonal_lora_init(model, "uniform")
 
         for name, param in model.named_parameters():
             if "lora_A" in name:
