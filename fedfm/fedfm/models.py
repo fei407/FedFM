@@ -58,7 +58,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
     """Load model with appropriate quantization config and other optimizations.
     """
 
-    model = AutoModelForCausalLM.from_pretrained(model_cfg.name, torch_dtype=torch.float16)
+    model = AutoModelForCausalLM.from_pretrained(model_cfg.name)
 
     if peft_name == "fft":
         pass
