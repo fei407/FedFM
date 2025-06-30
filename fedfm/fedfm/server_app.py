@@ -154,15 +154,6 @@ def fit_weighted_average(metrics):
     avg_loss = sum(losses) / sum(examples)
 
     print(f"INFO :      train loss: {avg_loss:.6f}")
-
-    write_header = not LOSS_CSV.exists()
-    with LOSS_CSV.open("a", newline="") as f:
-        writer = csv.writer(f)
-        if write_header:
-            writer.writerow(["round", "train_loss"])
-        current_round = metrics[0][1]["current_round"]  
-        writer.writerow([current_round, avg_loss])
-
     return {"train_loss": avg_loss}
 
 

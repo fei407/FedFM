@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Model checkpoint on Hugging Face hub")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu",
                         help="Device to run the model on (cuda | cpu)")
-    parser.add_argument("--max-new", dest="max_new", type=int, default=128,
+    parser.add_argument("--max-new", dest="max_new", type=int, default=50,
                         help="Max new tokens per response")
     parser.add_argument("--temperature", type=float, default=0.2,
                         help="Sampling temperature")
@@ -36,9 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def load_model(checkpoint: str, device: str):
-    tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-    model = AutoModelForCausalLM.from_pretrained(checkpoint).to(device).eval()
+def load_model(model_ckpt: str, device: str):
+    tokenizer = AutoTokenizer.from_pretrained("HuggingFaceTB/SmolLM2-135M-Instruct")
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.add_special_tokens({"additional_special_tokens": ["<|user|>", "<|assistant|>"]})
+
+    model = AutoModelForCausalLM.from_pretrained(model_ckpt).to(device).eval()
+    model.resize_token_embeddings(len(tokenizer))
     return tokenizer, model
 
 
@@ -48,11 +52,7 @@ def make_chat_fn(tokenizer, model, device, max_new, temperature, top_p):
     def respond(message, history):
         """Generate a model reply given the latest user message and chat history."""
         # Build messages list for apply_chat_template
-        messages = []
-        for human, bot in history:
-            messages.append({"role": "user", "content": human})
-            messages.append({"role": "assistant", "content": bot})
-        messages.append({"role": "user", "content": message})
+        messages = history + [{"role": "user", "content": message}]
 
         # Convert messages into a single prompt string with assistant tag appended
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -65,12 +65,16 @@ def make_chat_fn(tokenizer, model, device, max_new, temperature, top_p):
             temperature=temperature,
             top_p=top_p,
             do_sample=True,
+            repetition_penalty=1.1,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
 
         # Strip the prompt part to get only new tokens
         gen_ids = output_ids[0][inputs["input_ids"].shape[-1] :]
         reply = tokenizer.decode(gen_ids, skip_special_tokens=True).strip()
-        return reply
+        reply = reply.replace("<|assistant|>", "").strip()
+        return {"role": "assistant", "content": reply}
 
     return respond
 
@@ -89,6 +93,7 @@ def main():
 
     demo = gr.ChatInterface(
         fn=chat_fn,
+        type="messages",
         title="💬 Chat with SmolLM2 (Federated Efficient Parameter Fined-Tuning)",
         description="This model is fine-tuned on Alpaca-GPT4 via heterogeneous federated learning across edge devices: NVIDIA Jetson AGX Orin, Orin Nano, and Raspberry Pi 5.",
         examples=[
