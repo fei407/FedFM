@@ -60,6 +60,7 @@ class CustomFedAvg(FedAvg):
         client_param_dicts = []
         num_examples_list = []
 
+        # get keys
         full_state_dict = self.global_model.state_dict()
         if self.peft_name == "fft":
             selected_keys = list(full_state_dict.keys())
@@ -70,12 +71,14 @@ class CustomFedAvg(FedAvg):
         else:
             raise ValueError(f"Invalid peft_name: {self.peft_name}. Please use 'fft', 'lora', or 'ffa'.")
 
+        # change params to dicts for aggregation
         for _, fit_res in results:
             params = parameters_to_ndarrays(fit_res.parameters)
             param_dict = {k: torch.tensor(v) for k, v in zip(selected_keys, params)}
             client_param_dicts.append(param_dict)
             num_examples_list.append(fit_res.num_examples)
 
+        # add group_id for clients
         if self.peft_name == "fft":
             pass
         else:
@@ -165,6 +168,7 @@ def fit_weighted_average(metrics):
 
 def server_fn(context: Context):
     """Construct components that set the ServerApp behaviour."""
+    # Fix random seed
     set_seed(42)
 
     edge_devices = ["agx-orin", "orin-nano", "rpi-5"]
@@ -172,7 +176,6 @@ def server_fn(context: Context):
     # Read from config
     num_rounds = context.run_config["num-server-rounds"]
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
-
 
     # Create output directory given current timestamp
     current_time = datetime.now()
@@ -191,6 +194,7 @@ def server_fn(context: Context):
     rank_choices_map = dict(zip(edge_devices, rank_choices))
     device_nums_map = dict(zip(edge_devices, device_nums))
 
+    # Print Device Information
     print(f"{'Device Name':^20} {'Rank':^10} {'Quantity':^10}")
     print("-" * 42)
     for device_name in edge_devices:
@@ -203,8 +207,8 @@ def server_fn(context: Context):
 
     global_model = get_model(cfg.model, rank_choices, "group_0", cfg.fl.peft_name, cfg.fl.scaling_method)
 
-    # for name, param in global_model.named_parameters():
-    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
+    for name, param in global_model.named_parameters():
+        print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
 
     init_model_ndarrays = get_global_parameters(global_model, cfg.fl.peft_name, cfg.fl.fl_method)
     init_model_parameters = ndarrays_to_parameters(init_model_ndarrays)

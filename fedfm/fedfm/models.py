@@ -41,20 +41,6 @@ def orthogonal_lora_init(model, init_A):
                     r = module.lora_A[adapter_name].weight.shape[0]
                     module.lora_A[adapter_name].weight.copy_(Vt[:r, :])
 
-def check_lora_A_orthogonality(model, tol=1e-3):
-    for name, module in model.named_modules():
-        if hasattr(module, "lora_A"):
-            for adapter_name, A_layer in module.lora_A.items():
-                A = A_layer.weight.data
-                AA_t = A @ A.T
-                identity = torch.eye(A.shape[0], device=A.device)
-                deviation = torch.norm(AA_t - identity)
-
-                print(f"[{name}] Adapter: {adapter_name} | ‖A·Aᵀ - I‖ = {deviation:.4e}")
-                if deviation < tol:
-                    print(" --> ✅ A is approximately orthogonal")
-                else:
-                    print(" --> ❌ A is NOT orthogonal")
 
 def cosine_annealing(
     current_round: int,
@@ -67,12 +53,12 @@ def cosine_annealing(
     cos_inner = math.pi * current_round / total_round
     return lrate_min + 0.5 * (lrate_max - lrate_min) * (1 + math.cos(cos_inner))
 
-
+# generate fine-tuned model
 def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, peft_name, scaling_method):
     """Load model with appropriate quantization config and other optimizations.
     """
 
-    model = AutoModelForCausalLM.from_pretrained(model_cfg.name)
+    model = AutoModelForCausalLM.from_pretrained(model_cfg.name, torch_dtype=torch.float16)
 
     if peft_name == "fft":
         pass
@@ -128,7 +114,6 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 model.add_adapter(adapter_name, peft_config)
 
         model.set_adapter(group_id)
-
         orthogonal_lora_init(model, "uniform")
 
         for name, param in model.named_parameters():
@@ -139,6 +124,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
 
     return model
 
+# save last parameters
 def set_global_parameters(model, parameters: NDArrays, peft_name, fl_method) -> None:
     """Change the parameters of the model using the given ones."""
     full_state_dict = model.state_dict()
@@ -163,7 +149,7 @@ def set_global_parameters(model, parameters: NDArrays, peft_name, fl_method) -> 
 
     model.load_state_dict(state_dict, strict=False)
 
-
+# clients receive aggregated model
 def set_local_parameters(model, parameters: NDArrays, group_id: str, peft_name, fl_method) -> None:
     """Change the parameters of the model using the given ones."""
     full_state_dict = model.state_dict()
@@ -193,7 +179,7 @@ def set_local_parameters(model, parameters: NDArrays, group_id: str, peft_name, 
 
     print_state_dict_size(state_dict, label="[Download Commm.]")
 
-
+# clients send local model
 def get_local_parameters(model, group_id, peft_name) -> NDArrays:
     """Return the parameters of the current net."""
     local_state_dict = model.state_dict()
@@ -211,7 +197,7 @@ def get_local_parameters(model, group_id, peft_name) -> NDArrays:
 
     return [val.cpu().numpy() for _, val in state_dict.items()]
 
-
+# init broadcast
 def get_global_parameters(model, peft_name, fl_method) -> NDArrays:
     """Return the parameters of the current net."""
     global_state_dict = model.state_dict()
@@ -225,7 +211,7 @@ def get_global_parameters(model, peft_name, fl_method) -> NDArrays:
                 if "lora_A.group_0" in k
             }
         else:
-            group_state_dict = {k: v for k, v in model.state_dict().items() if "lora_" in k and "group_" in k}
+            group_state_dict = {k: v.clone().detach() for k, v in model.state_dict().items() if "lora_" in k and "group_" in k}
     elif peft_name == "ffa":
         group_state_dict = {
             k: v.clone().detach() for k, v in global_state_dict.items() if ("lora_B" in k and f"group_" in k)

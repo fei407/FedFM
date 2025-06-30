@@ -111,16 +111,18 @@ class FlowerClient(NumPyClient):
 
 def client_fn(context: Context):
     """Create a Flower client representing a single organization."""
+    # Fix random seed
     set_seed(42)
-
     edge_devices = ["agx-orin", "orin-nano", "rpi-5"]
 
+    # Read from config
     edge_device = context.node_config["edge-device"]
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     num_rounds = context.run_config["num-server-rounds"]
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
 
+    # Get initial model weights
     rank_choices_str = cfg.fl.rank_choices
     rank_choices = [int(r) for r in rank_choices_str.split(",")]
 
@@ -129,6 +131,7 @@ def client_fn(context: Context):
     device_index = edge_devices.index(edge_device)
     group_id = f"group_{device_index}"
 
+    # Print Device Information
     if cfg.fl.peft_name != "fft":
         print(f"INFO :      Device: {edge_device} | Group: {group_id} | Rank: {rank}")
 
