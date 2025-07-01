@@ -28,7 +28,6 @@ from .hetero import update_global_model, custom_aggregate
 from .utils import set_seed
 
 import csv, pathlib
-LOSS_CSV = pathlib.Path("results/loss_history.csv")
 
 # From: https://github.com/adap/flower/tree/main/examples/flowertune-llm
 
@@ -198,8 +197,8 @@ def server_fn(context: Context):
 
     global_model = get_model(cfg.model, rank_choices, "group_0", cfg.fl.peft_name, cfg.fl.scaling_method)
 
-    for name, param in global_model.named_parameters():
-        print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
+    # for name, param in global_model.named_parameters():
+    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
 
     init_model_ndarrays = get_global_parameters(global_model, cfg.fl.peft_name, cfg.fl.fl_method)
     init_model_parameters = ndarrays_to_parameters(init_model_ndarrays)

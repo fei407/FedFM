@@ -78,6 +78,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 lora_alpha=alpha,
                 lora_dropout=0.05,
                 task_type="CAUSAL_LM",
+                target_modules=["q_proj", "o_proj"],
                 use_rslora=use_rslora,
             )
 
@@ -104,6 +105,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 lora_alpha=alpha,
                 lora_dropout=0.05,
                 task_type="CAUSAL_LM",
+                target_modules=["q_proj", "o_proj"],
                 use_rslora=use_rslora,
             )
 

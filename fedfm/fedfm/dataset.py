@@ -24,7 +24,7 @@ def load_data(partition_id: int, num_partitions: int, dataset_name: str):
     total_size = len(dataset)
 
     # Define ratio: [10,10,10,10,10,1,1,1,1,1]
-    weights = [10 if i < 5 else 1 for i in range(num_partitions)]
+    weights = [10 if i < 5 else 10 for i in range(num_partitions)]
     total_weight = sum(weights)
 
     # Compute actual size per partition

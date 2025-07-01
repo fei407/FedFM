@@ -1,105 +1,98 @@
 import streamlit as st
 import pandas as pd
-import subprocess
-import threading
-import time
 from monitor import check_device_status
-from streamlit_autorefresh import st_autorefresh
-from streamlit.runtime.scriptrunner import add_script_run_ctx
+from tomlkit import parse, dumps
+from tomlkit.toml_document import TOMLDocument
+import time
 
-# ------------------ 页面配置 ------------------
+def update_pyproject_toml(
+    rank_agx, rank_orin, rank_rpi, total_rounds, ratio_per_round, agg_method,
+    file_path="pyproject.toml"
+):
+    with open(file_path, "r", encoding="utf-8") as f:
+        doc: TOMLDocument = parse(f.read())
+
+    fl_method_map = {
+        "FedLoRA-ZeroPadding": "zero-padding",
+        "FlexLoRA": "svd",
+        "FLoRA": "nbias",
+        "FLASH": "vanilla",
+    }
+
+    config = doc["tool"]["flwr"]["app"]["config"]
+
+    config["num-server-rounds"] = total_rounds
+    config["strategy"]["fraction-fit"]= ratio_per_round
+    config["fl"]["rank-choices"] = f"{rank_agx},{rank_orin},{rank_rpi}"
+    config["fl"]["fl-method"] = fl_method_map.get(agg_method, "svd")
+    config["fl"]["peft-name"] = "ffa" if agg_method == "FLASH" else "lora"
+    config["fl"]["scaling-method"] = "sqrt" if agg_method == "FLASH" else "normal"
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(dumps(doc))
+
+# ------------------ Page Config ------------------
 st.set_page_config(page_title="FedFM Dashboard", layout="wide")
 st.title("🌼 FedFM — Federated Learning Monitor")
 
-# ------------------ 初始化 Session State ------------------
+# ------------------ Init Session State ------------------
 st.session_state.setdefault("device_status", None)
-st.session_state.setdefault("last_ping_time", 0)
 st.session_state.setdefault("flwr_proc", None)
-st.session_state.setdefault("flwr_logs", [])
 
-# ------------------ 自动设备刷新 ------------------
-PING_INTERVAL = 10  # 秒
-now = time.time()
+# ------------------ Sidebar FL Config ------------------
+st.sidebar.header("💾 LoRA Rank Settings")
+rank_agx = st.sidebar.number_input("AGX Orin Rank", min_value=1, max_value=192, value=64, step=8)
+rank_orin = st.sidebar.number_input("Orin Nano Rank", min_value=1, max_value=192, value=16, step=8)
+rank_rpi = st.sidebar.number_input("Raspberry Pi 5 Rank", min_value=1, max_value=192, value=4, step=8)
 
-rank_agx = 64
-rank_orin = 16
-rank_rpi = 4
+st.sidebar.header("🛠️ FL Parameter Settings")
+total_rounds = st.sidebar.number_input("FL Total Rounds", min_value=1, max_value=200, value=3, step=1)
+ratio_per_round = st.sidebar.number_input("FL Clients per Round", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
+agg_method = st.sidebar.selectbox("Aggregation Method", ["FedLoRA-ZeroPadding", "FlexLoRA", "FLoRA", "FLASH"], index=3)
 
-DEVICE_TABLE = [
-    {"node": "server",   "name": "laptop",      "ip": "127.0.0.1", "rank": "/"},
-    {"node": "client 1", "name": "agx-orin",    "ip": "127.0.0.21","rank": rank_agx},
-    {"node": "client 2", "name": "orin-nano-1", "ip": "127.0.0.31","rank": rank_orin},
-    {"node": "client 3", "name": "orin-nano-2", "ip": "192.168.0.32","rank": rank_orin},
-    {"node": "client 4", "name": "orin-nano-3", "ip": "192.168.0.33","rank": rank_orin},
-    {"node": "client 5", "name": "orin-nano-4", "ip": "192.168.0.34","rank": rank_orin},
-    {"node": "client 6", "name": "rpi-5-1",     "ip": "127.0.0.41","rank": rank_rpi},
-    {"node": "client 7", "name": "rpi-5-2",     "ip": "192.168.0.42","rank": rank_rpi},
-    {"node": "client 8", "name": "rpi-5-3",     "ip": "192.168.0.43","rank": rank_rpi},
-    {"node": "client 9", "name": "rpi-5-4",     "ip": "192.168.0.44","rank": rank_rpi},
-    {"node": "client 10","name": "rpi-5-5",     "ip": "192.168.0.45","rank": rank_rpi},
-]
+save = st.sidebar.button("🚀 Save Configurations", key="save_btn")
 
-# 自动刷新
-st_autorefresh(interval=10_000, key="auto_ping")
+def get_current_device_status():
+    updated_table = [
+        {"node": "server",   "name": "laptop",      "ip": "127.0.0.1", "rank": "/"},
+        {"node": "client 1", "name": "agx-orin",    "ip": "127.0.0.21","rank": rank_agx},
+        {"node": "client 2", "name": "orin-nano-1", "ip": "127.0.0.31","rank": rank_orin},
+        {"node": "client 3", "name": "orin-nano-2", "ip": "192.168.0.32","rank": rank_orin},
+        {"node": "client 4", "name": "orin-nano-3", "ip": "192.168.0.33","rank": rank_orin},
+        {"node": "client 5", "name": "orin-nano-4", "ip": "192.168.0.34","rank": rank_orin},
+        {"node": "client 6", "name": "rpi-5-1",     "ip": "127.0.0.41","rank": rank_rpi},
+        {"node": "client 7", "name": "rpi-5-2",     "ip": "192.168.0.42","rank": rank_rpi},
+        {"node": "client 8", "name": "rpi-5-3",     "ip": "192.168.0.43","rank": rank_rpi},
+        {"node": "client 9", "name": "rpi-5-4",     "ip": "192.168.0.44","rank": rank_rpi},
+        {"node": "client 10","name": "rpi-5-5",     "ip": "192.168.0.45","rank": rank_rpi},
+    ]
+    return updated_table
 
-if st.session_state.device_status is None or now - st.session_state.last_ping_time > PING_INTERVAL:
-    with st.spinner("🔄 Pinging devices..."):
-        st.session_state.device_status = check_device_status(DEVICE_TABLE)
-        st.session_state.last_ping_time = now
+def _emoji(ok: bool) -> str:
+    return "🟢" if ok else "🔴"
 
-# ------------------ 启动 FLWR 服务函数 ------------------
-def read_output():
-    try:
-        for line in st.session_state.flwr_proc.stdout:
-            append_log(line)
-    except Exception as e:
-        append_log(f"\n[ERROR] {e}\n")
+if st.button("🔍 Ping Devices"):
+    with st.spinner("Pinging devices..."):
+        st.session_state.device_status = check_device_status(get_current_device_status())
 
-def start_flwr_server():
-    if st.session_state.flwr_proc is not None:
-        return
+if st.session_state.device_status is None:
+    st.session_state.device_status = [
+        {**device, "status": _emoji(False)} for device in get_current_device_status()
+    ]
+else:
+    for i, device in enumerate(get_current_device_status()):
+        st.session_state.device_status[i]["rank"] = device["rank"]
 
-    proc = subprocess.Popen(
-        ["flwr", "run", ".", "local-deployment", "--stream"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        bufsize=1,
-        text=True
-    )
-    st.session_state.flwr_proc = proc
-    append_log(">>> FLWR server started...\n")
+if save:
+    update_pyproject_toml(rank_agx, rank_orin, rank_rpi, total_rounds, ratio_per_round, agg_method)
+    success_box = st.empty()
+    success_box.success("Configuration saved to pyproject.toml")
 
-    thread = threading.Thread(target=read_output, daemon=True)
-    add_script_run_ctx(thread)
-    thread.start()
+    time.sleep(2)
+    success_box.empty()
 
-def stop_flwr_server():
-    if st.session_state.flwr_proc is not None:
-        st.session_state.flwr_proc.terminate()
-        st.session_state.flwr_proc = None
-        append_log(">>> FLWR server stopped.\n")
-
-MAX_LOG_LINES = 500
-
-def append_log(line: str):
-    logs = st.session_state.get("flwr_logs", [])
-    logs.append(line)
-    if len(logs) > MAX_LOG_LINES:
-        logs = logs[-MAX_LOG_LINES:]
-    st.session_state.flwr_logs = logs
-
-# ------------------ 侧边栏 ------------------
-st.sidebar.header("🛠️ FL Control")
-total_rounds = st.sidebar.selectbox("FL Total Rounds", [20, 30, 50, 100], index=2)
-clients_per_round = st.sidebar.selectbox("FL Clients per Round", [0.1, 0.2, 0.5, 1], index=1)
-agg_method = st.sidebar.selectbox("Aggregation Method", ["FedFFT", "FedLoRA-ZeroPadding", "FlexLoRA", "FLoRA", "FLASH"], index=4)
-scaling_method = st.sidebar.selectbox("Scaling Method", ["fixed", "normal", "sqrt"], index=1)
-
-start = st.sidebar.button("🚀 Start Server", key="start_btn")
-stop = st.sidebar.button("⛔ Stop Server", key="stop_btn")
-
-# ------------------ 页面布局 ------------------
-col1, col2 = st.columns(2)
+# ------------------ Page Layout ------------------
+col1, _ = st.columns(2)
 
 with col1:
     st.subheader("📡 Device Status")
@@ -110,22 +103,3 @@ with col1:
          {"selector":"td","props":[("text-align","center")]}]
     ).hide(axis="index")
     st.markdown(styled_df.to_html(escape=False), unsafe_allow_html=True)
-
-with col2:
-    st.subheader("🖥️ Training Terminal")
-
-    if start:
-        append_log(">>> Launching FLWR server...\n")
-        start_flwr_server()
-    elif stop:
-        stop_flwr_server()
-
-    # 初始化 log
-    if "flwr_logs" not in st.session_state or not st.session_state.flwr_logs:
-        st.session_state.flwr_logs = [">>> Waiting for server to start...\n"]
-
-    # 实时日志输出窗口（主线程更新）
-    log_box = st.empty()
-    log_box.code("".join(st.session_state.flwr_logs[-50:]), language="bash")
-
-

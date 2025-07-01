@@ -109,6 +109,18 @@ def custom_aggregate(client_param_dicts: List[Dict[str, torch.Tensor]], num_exam
 
         processed_clients_params.append(received)
 
+    # c1, c2 = processed_clients_params[:2]
+    #
+    # ratios = []
+    # for k, v in c2.items():
+    #     if "lora_nbias" in k:
+    #         r = v.norm().item() / c1[k].norm().item()
+    #         ratios.append((k, r))
+    #         print(f"{k}: {r}")
+    #
+    # avg = sum(r for _, r in ratios) / len(ratios) if ratios else 0
+    # print(f"average: {avg:.2f}")
+
     aggregated_params = {k: torch.zeros_like(v) for k, v in processed_clients_params[0].items()}
 
     # for i, client_params in enumerate(processed_clients_params):
