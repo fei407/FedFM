@@ -116,11 +116,21 @@ def client_fn(context: Context):
     edge_devices = ["agx-orin", "orin-nano", "rpi-5"]
 
     # Read from config
-    edge_device = context.node_config["edge-device"]
+    # edge_device = context.node_config["edge-device"]
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     num_rounds = context.run_config["num-server-rounds"]
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
+
+    # Read device name
+    if num_partitions == 0:
+        edge_device = "agx-orin"
+    elif 1 <= num_partitions <= 4:
+        edge_device = "orin-nano"
+    elif 5 <= num_partitions <= 9:
+        edge_device = "rpi-5"
+    else:
+        edge_device = "agx-orin"
 
     # Get initial model weights
     rank_choices_str = cfg.fl.rank_choices
