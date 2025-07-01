@@ -123,11 +123,11 @@ def client_fn(context: Context):
     cfg = DictConfig(replace_keys(unflatten_dict(context.run_config)))
 
     # Read device name
-    if num_partitions == 0:
+    if partition_id == 0:
         edge_device = "agx-orin"
-    elif 1 <= num_partitions <= 4:
+    elif 1 <= partition_id <= 4:
         edge_device = "orin-nano"
-    elif 5 <= num_partitions <= 9:
+    elif 5 <= partition_id <= 9:
         edge_device = "rpi-5"
     else:
         edge_device = "agx-orin"

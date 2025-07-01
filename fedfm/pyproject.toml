@@ -42,7 +42,7 @@ fl.device-nums = "1,4,5"
 
 fl.fl-method = "vanilla"
 fl.peft-name = "ffa"
-fl.scaling-method = "normal"
+fl.scaling-method = "sqrt"
 
 train.save-every-round = 10
 train.learning-rate-max = 5e-4
