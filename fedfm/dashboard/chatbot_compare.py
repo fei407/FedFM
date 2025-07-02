@@ -1,18 +1,16 @@
 import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
+from peft import AutoPeftModelForCausalLM
 import tkinter as tk
 from tkinter import filedialog
 from types import SimpleNamespace
 import os
 import math
 
-args = SimpleNamespace(device="cuda" if torch.cuda.is_available() else "cpu", max_new=50, temperature=0.2, top_p=0.9)
+args = SimpleNamespace(device="cuda" if torch.cuda.is_available() else "cpu", max_new=256, temperature=0.2, top_p=0.9)
 
 model_name = "HuggingFaceTB/SmolLM2-135M"
-
-ft_model_name = "HuggingFaceTB/SmolLM2-135M-Instruct"
 
 def merge_groups(model):
     state = model.state_dict()
@@ -59,7 +57,7 @@ def merge_groups(model):
     return model
 
 @st.cache_resource
-def load_base_model(model_name_or_path):
+def load_raw_model(model_name_or_path):
     model = AutoModelForCausalLM.from_pretrained(model_name_or_path).to(args.device).eval()
     tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
 
@@ -68,10 +66,10 @@ def load_base_model(model_name_or_path):
 def render():
     st.subheader("💬 Chatbot Comparison")
 
-    default_peft_path = "/home/fw407/workspace/results/ffa-vanilla_peft_100/"
+    default_peft_path = "/home/fw407/workspace/results/ffa/ffa_peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
 
-    path_col, browse_col = st.columns([8, 1], gap="small")
+    path_col, browse_col = st.columns([4, 1])
     with path_col:
         st.session_state["peft_path"] = st.text_input("PEFT model path", st.session_state["peft_path"])
     with browse_col:
@@ -82,8 +80,8 @@ def render():
             if selected:
                 st.session_state["peft_path"] = selected
 
-    if "tokenizer" not in st.session_state or "base_model" not in st.session_state:
-        st.session_state["base_model"], st.session_state["tokenizer"] = load_base_model(model_name)
+    if "tokenizer" not in st.session_state or "raw_model" not in st.session_state:
+        st.session_state["raw_model"], st.session_state["tokenizer"] = load_raw_model(model_name)
 
     if st.button("Load Fine-Tuned PEFT Model"):
         base_path = st.session_state["peft_path"]
@@ -94,38 +92,54 @@ def render():
         if missing:
             st.error(f"Missing adapter_config.json in: {', '.join(missing)}")
         else:
-            base_model = st.session_state["base_model"]
-            peft_model = PeftModel.from_pretrained(base_model, os.path.join(base_path, adapter_names[0]), adapter_name=adapter_names[0]).to(args.device).eval()
+            ft_model = AutoPeftModelForCausalLM.from_pretrained(os.path.join(base_path, adapter_names[0]), adapter_name=adapter_names[0]).to(args.device).eval()
 
-            for name in adapter_names[1:]:
-                peft_model.load_adapter(os.path.join(base_path, name), adapter_name=name)
+            # for name in adapter_names[1:]:
+            #     ft_model.load_adapter(os.path.join(base_path, name), adapter_name=name)
+            #
+            # merge_groups(ft_model)
+            # for adapter_name in list(ft_model.peft_config.keys()):
+            #     ft_model.delete_adapter(adapter_name)
+            #     print(f"✅ Removed adapters: {list(ft_model.peft_config.keys())}")
 
-            merge_groups(peft_model)
-            for adapter_name in list(peft_model.peft_config.keys()):
-                peft_model.delete_adapter(adapter_name)
-                print(f"✅ Removed adapters: {list(peft_model.peft_config.keys())}")
+            st.session_state["finetuned_model"] = ft_model.merge_and_unload()
 
-            st.session_state["finetuned_model"] = peft_model.merge_and_unload()
-
-            # for name, param in model.named_parameters():
+            # for name, param in ft_model.named_parameters():
             #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
 
             st.success("Finetuned model with multiple adapters loaded.")
 
     ###########
-    # st.session_state["finetuned_model"] = AutoModelForCausalLM.from_pretrained(ft_model_name).to(args.device).eval()
     user_input = st.chat_input("Ask a question")
+
+    Q1 = "What should I consider when choosing a pet?"
+    Q2 = "Where is the capital city of France?"
+    Q3 = "How to print strings 'Hello World!' in Python?"
+
+    if st.button(Q1):
+        st.session_state["user_input"] = Q1
+    if st.button(Q2):
+        st.session_state["user_input"] = Q2
+    if st.button(Q3):
+        st.session_state["user_input"] = Q3
+
+    if "user_input" in st.session_state and st.session_state["user_input"]:
+        user_input = st.session_state["user_input"]
+        st.session_state["user_input"] = ""
+
     tokenizer = st.session_state["tokenizer"]
+    tokenizer.pad_token = tokenizer.eos_token
 
     if user_input:
-        st.markdown("**Question：** " + user_input)
-        # prompt = f"### text:\n{user_input}\n\n### output:\n"
+        with st.chat_message("user"):
+            st.write("**Question：** "+ user_input)
+        prompt = f"### Instruction:\n{user_input}\n\n### Response:\n"
+        inputs = tokenizer(prompt, return_tensors="pt").to(args.device)
+        input_len = inputs["input_ids"].shape[-1]
 
-        inputs  = tokenizer.encode(user_input, return_tensors="pt").to(args.device)
-        # input_len = inputs["input_ids"].shape[-1]
-
-        outputs  = st.session_state["base_model"].generate(
-            inputs,
+        # Base Model
+        raw_outputs = st.session_state["raw_model"].generate(
+            **inputs,
             max_new_tokens=args.max_new,
             temperature=args.temperature,
             top_p=args.top_p,
@@ -135,14 +149,13 @@ def render():
             eos_token_id=tokenizer.eos_token_id,
         )
 
-        base_ans = tokenizer.decode(outputs[0])
-        # base_ans = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
+        base_ans = tokenizer.decode(raw_outputs[0][input_len:], skip_special_tokens=True).strip()
+        with st.chat_message("assistant"):
+            st.write("**Base Model Answer：** "+ base_ans)
 
-        st.markdown("**Base Model Answer：** " + base_ans)
-
-        # ###################
-        outputs = st.session_state["finetuned_model"].generate(
-            inputs,
+        # Finetuned Model
+        ft_outputs = st.session_state["finetuned_model"].generate(
+            **inputs,
             max_new_tokens=args.max_new,
             temperature=args.temperature,
             top_p=args.top_p,
@@ -152,23 +165,9 @@ def render():
             eos_token_id=tokenizer.eos_token_id,
         )
 
-        ft_ans = tokenizer.decode(outputs[0])
-
-        st.markdown("**Finetuned Model Answer：** " + ft_ans)
-
-    #     outputs = st.session_state["finetuned_model"].generate(
-    #         **input,
-    #         max_new_tokens=args.max_new,
-    #         temperature=args.temperature,
-    #         top_p=args.top_p,
-    #         do_sample=True,
-    #         repetition_penalty=1.1,
-    #         pad_token_id=tokenizer.pad_token_id,
-    #         eos_token_id=tokenizer.eos_token_id,
-    #     )
-    #     ft_ans = tokenizer.decode(outputs[0][input_len:], skip_special_tokens=True).strip()
-    #
-    #     st.markdown("**Finetuned Model Answer：** " + ft_ans)
+        ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
+        with st.chat_message("assistant"):
+            st.write("**Finetuned Model Answer：** "+ ft_ans)
 
 if __name__ == "__main__":
     render()

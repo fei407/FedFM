@@ -47,8 +47,8 @@ rank_orin = st.sidebar.number_input("Orin Nano Rank", min_value=1, max_value=192
 rank_rpi = st.sidebar.number_input("Raspberry Pi 5 Rank", min_value=1, max_value=192, value=4, step=8)
 
 st.sidebar.header("🛠️ FL Parameter Settings")
-total_rounds = st.sidebar.number_input("FL Total Rounds", min_value=1, max_value=200, value=3, step=1)
-ratio_per_round = st.sidebar.number_input("FL Clients per Round", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
+total_rounds = st.sidebar.number_input("Total Rounds", min_value=1, max_value=200, value=3, step=1)
+ratio_per_round = st.sidebar.number_input("Client Ratio per Round", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
 agg_method = st.sidebar.selectbox("Aggregation Method", ["FedLoRA-ZeroPadding", "FlexLoRA", "FLoRA", "FLASH"], index=3)
 
 save = st.sidebar.button("🚀 Save Configurations", key="save_btn")
