@@ -30,8 +30,8 @@ clientapp = "fedfm.client_app:app"
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824
 enable-parameter-chaining = true
-num-server-rounds = 2
-strategy.fraction-fit = 1
+num-server-rounds = 100
+strategy.fraction-fit = 0.2
 strategy.fraction-evaluate = 0.0
 
 dataset.name = "vicgalle/alpaca-gpt4"
@@ -42,7 +42,7 @@ fl.device-nums = "1,4,5"
 
 fl.fl-method = "vanilla"
 fl.peft-name = "ffa"
-fl.scaling-method = "sqrt"
+fl.scaling-method = "normal"
 
 train.save-every-round = 10
 train.learning-rate-max = 1e-3
@@ -52,9 +52,9 @@ train.training-arguments.output-dir = ""
 train.training-arguments.learning-rate = ""
 train.training-arguments.per-device-train-batch-size = 4
 train.training-arguments.gradient-accumulation-steps = 1
-train.training-arguments.logging-steps = 10
+train.training-arguments.logging-steps = 100
 train.training-arguments.num-train-epochs = 1
-train.training-arguments.max-steps = 10
+train.training-arguments.max-steps = -1
 train.training-arguments.save-steps = 1000
 train.training-arguments.save-total-limit = 10
 train.training-arguments.gradient-checkpointing = true
@@ -68,8 +68,4 @@ default = "local-simulation"
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 10
 options.backend.client-resources.num-cpus = 10
-options.backend.client-resources.num-gpus = 1.0
-
-[tool.flwr.federations.local-deployment]
-address = "127.0.0.1:9093"
-insecure = true
+options.backend.client-resources.num-gpus = 0.5

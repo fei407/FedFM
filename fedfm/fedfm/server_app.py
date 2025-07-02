@@ -181,7 +181,7 @@ def server_fn(context: Context):
     # Create output directory given current timestamp
     current_time = datetime.now()
     timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    folder_name = f"{cfg.fl.peft_name}_{cfg.fl.fl_method}_{timestamp}"
+    folder_name = f"{cfg.fl.peft_name}_{cfg.fl.fl_method}_{cfg.fl.scaling_method}_{timestamp}"
     save_path = os.path.join(os.getcwd(), f"results/{folder_name}")
     os.makedirs(save_path, exist_ok=True)
 
@@ -221,9 +221,9 @@ def server_fn(context: Context):
         on_fit_config_fn=get_on_fit_config(save_path),
         fit_metrics_aggregation_fn=get_fit_metrics_agg_fn(save_path),
         initial_parameters=init_model_parameters,
-        min_available_clients=1,
-        min_fit_clients=1,
-        min_evaluate_clients=1,
+        # min_available_clients=1,
+        # min_fit_clients=1,
+        # min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
             cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.fl_method
         ),
