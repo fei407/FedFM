@@ -4,6 +4,7 @@ from monitor import check_device_status
 from tomlkit import parse, dumps
 from tomlkit.toml_document import TOMLDocument
 import time
+from chatbot_compare import render as render_chatbot
 
 def update_pyproject_toml(
     rank_agx, rank_orin, rank_rpi, total_rounds, ratio_per_round, agg_method,
@@ -71,6 +72,8 @@ def get_current_device_status():
 def _emoji(ok: bool) -> str:
     return "🟢" if ok else "🔴"
 
+st.video("/home/fw407/workspace/FedFM/demo_video/setup_introduction.mp4")
+
 if st.button("🔍 Ping Devices"):
     with st.spinner("Pinging devices..."):
         st.session_state.device_status = check_device_status(get_current_device_status())
@@ -92,7 +95,7 @@ if save:
     success_box.empty()
 
 # ------------------ Page Layout ------------------
-col1, _ = st.columns(2)
+col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("📡 Device Status")
@@ -103,3 +106,5 @@ with col1:
          {"selector":"td","props":[("text-align","center")]}]
     ).hide(axis="index")
     st.markdown(styled_df.to_html(escape=False), unsafe_allow_html=True)
+with col2:
+    render_chatbot()

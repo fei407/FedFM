@@ -4,6 +4,8 @@ import torch
 import os
 from datetime import datetime
 from typing import Optional, Union
+import logging
+logger = logging.getLogger(__name__)
 
 from flwr.common import (
     Context,
@@ -14,12 +16,10 @@ from flwr.common import (
     ndarrays_to_parameters,
 )
 from flwr.common.config import unflatten_dict
-from flwr.common.logger import log
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 
-from logging import WARNING
 from omegaconf import DictConfig
 
 from .models import get_model, get_global_parameters, set_global_parameters
@@ -27,7 +27,6 @@ from .dataset import replace_keys
 from .hetero import update_global_model, custom_aggregate
 from .utils import set_seed
 
-import csv, pathlib
 
 # From: https://github.com/adap/flower/tree/main/examples/flowertune-llm
 
@@ -101,9 +100,9 @@ class CustomFedAvg(FedAvg):
         metrics_aggregated = {}
         if self.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
-            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics, server_round)
         elif server_round == 1:  # Only log this warning once
-            log.warning(WARNING, "No fit_metrics_aggregation_fn provided")
+            logger.warning("No fit_metrics_aggregation_fn provided")
 
         return parameters_aggregated, metrics_aggregated
 
@@ -144,16 +143,28 @@ def get_on_fit_config(save_path):
 
     return fit_config_fn
 
+def get_fit_metrics_agg_fn(save_path):
 
-def fit_weighted_average(metrics):
-    """Aggregate (federated) evaluation metrics."""
-    # Multiply accuracy of each client by number of examples used
-    losses = [num_examples * m["train_loss"] for num_examples, m in metrics]
-    examples = [num_examples for num_examples, _ in metrics]
-    avg_loss = sum(losses) / sum(examples)
+    def fit_weighted_average(metrics, server_round):
+        """Aggregate (federated) evaluation metrics."""
+        # Multiply accuracy of each client by number of examples used
+        losses = [num_examples * m["train_loss"] for num_examples, m in metrics]
+        examples = [num_examples for num_examples, _ in metrics]
+        avg_loss = sum(losses) / sum(examples)
 
-    print(f"INFO :      train loss: {avg_loss:.6f}")
-    return {"train_loss": avg_loss}
+        log_line = f"Round {server_round} - train loss: {avg_loss:.6f}"
+
+        if save_path is not None:
+            os.makedirs(save_path, exist_ok=True)
+            log_file = os.path.join(save_path, "train_loss.txt")
+            with open(log_file, "a") as f:
+                f.write(log_line + "\n")
+
+        print(f"INFO :      Round {server_round} - train loss: {avg_loss:.6f}")
+
+        return {"train_loss": avg_loss}
+
+    return fit_weighted_average
 
 
 def server_fn(context: Context):
@@ -208,11 +219,11 @@ def server_fn(context: Context):
         fraction_fit=cfg.strategy.fraction_fit,
         fraction_evaluate=cfg.strategy.fraction_evaluate,
         on_fit_config_fn=get_on_fit_config(save_path),
-        fit_metrics_aggregation_fn=fit_weighted_average,
+        fit_metrics_aggregation_fn=get_fit_metrics_agg_fn(save_path),
         initial_parameters=init_model_parameters,
-        # min_available_clients=1,
-        # min_fit_clients=1,
-        # min_evaluate_clients=1,
+        min_available_clients=1,
+        min_fit_clients=1,
+        min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
             cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.fl_method
         ),
