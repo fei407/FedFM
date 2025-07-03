@@ -258,7 +258,7 @@ def update_global_model(global_model, aggregated_params, fl_method,  peft_name, 
                         f"Unknown scaling_method '{scaling_method}', choose from ['fixed','normal','sqrt'].")
 
                 # print(f"solve_method: {solve_method}")
-                B_T = solve_linear(A_init.T, value.T, "simple", 1e-5)
+                B_T = solve_linear(A_init.T, value.T, "least_squares", 1e-5)
                 B = B_T.T
 
                 solved_params[key_B] = B / scaling

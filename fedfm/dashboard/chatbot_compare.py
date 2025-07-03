@@ -1,12 +1,47 @@
 import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import AutoPeftModelForCausalLM
+from peft import AutoPeftModelForCausalLM, get_peft_model, LoraConfig
+import torch.nn.init as init
 import tkinter as tk
 from tkinter import filedialog
 from types import SimpleNamespace
 import os
 import math
+import random
+import numpy as np
+
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+def orthogonal_lora_init(model, init_A):
+    for name, module in model.named_modules():
+        if hasattr(module, "lora_A"):
+            in_features = module.lora_A["group_0"].weight.shape[1]
+            out_features = module.lora_B["group_0"].weight.shape[0]
+
+            with torch.no_grad():
+                rand_mat = torch.empty(out_features, in_features)
+
+                if init_A == "uniform":
+                    init.uniform_(rand_mat, a=-0.5, b=0.5)
+                elif init_A == "gaussian":
+                    init.normal_(rand_mat, mean=0.0, std=0.02)
+                elif init_A == "kaiming":
+                    init.kaiming_uniform_(rand_mat, a=math.sqrt(5))
+                else:
+                    raise ValueError(f"Unknown init_A method: {init_A}")
+
+                _, _, Vt = torch.linalg.svd(rand_mat, full_matrices=False)
+
+                for adapter_name in module.lora_A.keys():
+                    r = module.lora_A[adapter_name].weight.shape[0]
+                    module.lora_A[adapter_name].weight.copy_(Vt[:r, :])
 
 args = SimpleNamespace(device="cuda" if torch.cuda.is_available() else "cpu", max_new=256, temperature=0.2, top_p=0.9)
 
@@ -66,7 +101,7 @@ def load_raw_model(model_name_or_path):
 def render():
     st.subheader("💬 Chatbot Comparison")
 
-    default_peft_path = "/home/fw407/workspace/results/ffa/ffa_peft_100"
+    default_peft_path = "/home/fw407/workspace/results/lora_svd_normal/peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
 
     path_col, browse_col = st.columns([4, 1])
@@ -112,9 +147,9 @@ def render():
     ###########
     user_input = st.chat_input("Ask a question")
 
-    Q1 = "What should I consider when choosing a pet?"
+    Q1 = "What some thing consider when choosing a pet?"
     Q2 = "Where is the capital city of France?"
-    Q3 = "How to print strings 'Hello World!' in Python?"
+    Q3 = "Generate a list of interesting riddles."
 
     if st.button(Q1):
         st.session_state["user_input"] = Q1

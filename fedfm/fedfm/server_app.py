@@ -108,7 +108,7 @@ class CustomFedAvg(FedAvg):
 
 # Get function that will be executed by the strategy's evaluate() method
 # Here we use it to save global model checkpoints
-def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save_path, peft_name, scaling_method, fl_method):
+def get_evaluate_fn(global_model, save_every_round, total_round, save_path, peft_name, fl_method):
     """Return an evaluation function for saving global model."""
 
     def evaluate(server_round: int, parameters, config):
@@ -118,10 +118,14 @@ def get_evaluate_fn(model_cfg, rank_choices, save_every_round, total_round, save
         if server_round != 0 and (
             server_round == total_round or server_round % save_every_round == 0
         ):
-            # Init model
-            model = get_model(model_cfg, rank_choices, "group_2", peft_name, scaling_method)
-
+            model = global_model
             set_global_parameters(model, parameters, peft_name, fl_method)
+
+            if fl_method== "nbias":
+                for adapter_name in list(model.peft_config.keys()):
+                    model.delete_adapter(adapter_name)
+                    print(f"✅ Removed adapters: {list(model.peft_config.keys())}")
+                model = model.merge_and_unload()
 
             model.save_pretrained(f"{save_path}/peft_{server_round}")
             print(f"INFO :      model is saved at'{save_path}/peft_{server_round}'")
@@ -225,7 +229,7 @@ def server_fn(context: Context):
         # min_fit_clients=1,
         # min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
-            cfg.model, rank_choices, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.scaling_method, cfg.fl.fl_method
+            global_model, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.fl_method
         ),
         global_model=global_model,
         rank_choices=rank_choices,
