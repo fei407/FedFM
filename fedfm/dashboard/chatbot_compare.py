@@ -101,7 +101,7 @@ def load_raw_model(model_name_or_path):
 def render():
     st.subheader("💬 Chatbot Comparison")
 
-    default_peft_path = "/home/fw407/workspace/results/lora_svd_normal/peft_100"
+    default_peft_path = "/home/fw407/workspace/results/ffa_vanilla_sqrt/peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
 
     path_col, browse_col = st.columns([4, 1])
@@ -147,9 +147,10 @@ def render():
     ###########
     user_input = st.chat_input("Ask a question")
 
-    Q1 = "What some thing consider when choosing a pet?"
-    Q2 = "Where is the capital city of France?"
-    Q3 = "Generate a list of interesting riddles."
+    Q1 = "Give me a list of ten animal names."
+    Q2 = "What are some things I should consider when choosing a pet?"
+    Q3 = "How can we reduce air pollution?"
+    # Q3 = "Generate a list of interesting riddles."
 
     if st.button(Q1):
         st.session_state["user_input"] = Q1
