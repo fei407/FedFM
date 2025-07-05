@@ -55,13 +55,13 @@ save = st.sidebar.button("🚀 Save Configurations", key="save_btn")
 
 def get_current_device_status():
     updated_table = [
-        {"node": "server",   "name": "laptop",      "ip": "127.0.0.1", "rank": "/"},
-        {"node": "client 1", "name": "agx-orin",    "ip": "127.0.0.21","rank": rank_agx},
-        {"node": "client 2", "name": "orin-nano-1", "ip": "127.0.0.31","rank": rank_orin},
+        {"node": "server",   "name": "laptop",      "ip": "192.168.0.11", "rank": "/"},
+        {"node": "client 1", "name": "agx-orin",    "ip": "192.168.0.21","rank": rank_agx},
+        {"node": "client 2", "name": "orin-nano-1", "ip": "192.168.0.31","rank": rank_orin},
         {"node": "client 3", "name": "orin-nano-2", "ip": "192.168.0.32","rank": rank_orin},
         {"node": "client 4", "name": "orin-nano-3", "ip": "192.168.0.33","rank": rank_orin},
         {"node": "client 5", "name": "orin-nano-4", "ip": "192.168.0.34","rank": rank_orin},
-        {"node": "client 6", "name": "rpi-5-1",     "ip": "127.0.0.41","rank": rank_rpi},
+        {"node": "client 6", "name": "rpi-5-1",     "ip": "192.168.0.41","rank": rank_rpi},
         {"node": "client 7", "name": "rpi-5-2",     "ip": "192.168.0.42","rank": rank_rpi},
         {"node": "client 8", "name": "rpi-5-3",     "ip": "192.168.0.43","rank": rank_rpi},
         {"node": "client 9", "name": "rpi-5-4",     "ip": "192.168.0.44","rank": rank_rpi},
