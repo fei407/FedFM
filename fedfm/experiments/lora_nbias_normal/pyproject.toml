@@ -40,11 +40,11 @@ model.name = "HuggingFaceTB/SmolLM2-135M"
 fl.rank-choices = "64,16,4"
 fl.device-nums = "1,4,5"
 
-fl.fl-method = "vanilla"
-fl.peft-name = "ffa"
-fl.scaling-method = "sqrt"
+fl.fl-method = "nbias"
+fl.peft-name = "lora"
+fl.scaling-method = "normal"
 
-train.save-every-round = 10
+train.save-every-round = 100
 train.learning-rate-max = 1e-3
 train.learning-rate-min = 2e-5
 train.seq-length = 256
