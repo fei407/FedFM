@@ -187,7 +187,7 @@ def render():
 
         base_ans = tokenizer.decode(raw_outputs[0][input_len:], skip_special_tokens=True).strip()
         with st.chat_message("assistant"):
-            st.write("**Base Model Answer：** "+ base_ans)
+            st.write("**Base Model Answer (SmolLM2-135M)：** "+ base_ans)
 
         # Finetuned Model
         ft_outputs = st.session_state["finetuned_model"].generate(
@@ -203,7 +203,7 @@ def render():
 
         ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
         with st.chat_message("assistant"):
-            st.write("**Finetuned Model Answer：** "+ ft_ans)
+            st.write("**Finetuned Model Answer (SmolLM2-135M finetuned on alpaca-gpt4)：** "+ ft_ans)
 
 if __name__ == "__main__":
     render()
