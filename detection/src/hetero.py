@@ -123,6 +123,9 @@ def custom_aggregate(client_param_dicts: List[Dict[str, torch.Tensor]], num_exam
 
     aggregated_params = {k: torch.zeros_like(v) for k, v in processed_clients_params[0].items()}
 
+    # for i, k in enumerate(aggregated_params.keys()):
+    #     print(f"{i:03d}: {k}")
+
     # for i, client_params in enumerate(processed_clients_params):
     #     print(f"\nClient {i} parameter shapes:")
     #     for k, v in client_params.items():

@@ -63,9 +63,9 @@ class CustomFedAvg(FedAvg):
         if self.peft_name == "fft":
             selected_keys = list(full_state_dict.keys())
         elif self.peft_name == "lora":
-            selected_keys = [k for k in full_state_dict if "lora_" in k and "group_0" in k]
+            selected_keys = [k for k in full_state_dict if ("lora_" in k and "group_0" in k) or "class_embed" in k or "bbox_embed" in k]
         elif self.peft_name == "ffa":
-            selected_keys = [k for k in full_state_dict if "lora_B" in k and "group_0" in k]
+            selected_keys = [k for k in full_state_dict if ("lora_B" in k and "group_0" in k) or "class_embed" in k or "bbox_embed" in k]
         else:
             raise ValueError(f"Invalid peft_name: {self.peft_name}. Please use 'fft', 'lora', or 'ffa'.")
 
@@ -86,7 +86,10 @@ class CustomFedAvg(FedAvg):
                 if rank not in rank_to_idx:
                     raise ValueError(f"Client {i}: rank {rank} not in {self.rank_choices}")
                 gid = rank_to_idx[rank]
-                client_param_dicts[i] = {k.replace('group_0', f'group_{gid}'): v for k, v in params.items()}
+                client_param_dicts[i] = {
+                    k if ("class_embed" in k or "bbox_embed" in k) else k.replace('group_0', f'group_{gid}'): v
+                    for k, v in params.items()
+                }
 
         # hetero-aggragation and construction
         aggregated_params = custom_aggregate(client_param_dicts, num_examples_list, self.global_model, self.fl_method, self.peft_name, self.scaling_method, self.rmax)
@@ -125,6 +128,12 @@ def get_evaluate_fn(global_model, save_every_round, total_round, save_path, peft
                 for adapter_name in list(model.peft_config.keys()):
                     model.delete_adapter(adapter_name)
                     print(f"✅ Removed adapters: {list(model.peft_config.keys())}")
+                model = model.merge_and_unload()
+            elif fl_method!= "fft":
+                for adapter_name in list(model.peft_config.keys()):
+                    if adapter_name in ["group_1", "group_2"]:
+                        model.delete_adapter(adapter_name)
+                        print(f"✅ Removed adapter: {adapter_name}")
                 model = model.merge_and_unload()
 
             model.save_pretrained(f"{save_path}/peft_{server_round}")
@@ -229,9 +238,9 @@ def server_fn(context: Context):
         on_fit_config_fn=get_on_fit_config(save_path),
         fit_metrics_aggregation_fn=get_fit_metrics_agg_fn(save_path),
         initial_parameters=init_model_parameters,
-        min_available_clients=1,
-        min_fit_clients=1,
-        min_evaluate_clients=1,
+        # min_available_clients=1,
+        # min_fit_clients=1,
+        # min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
             global_model, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.fl_method
         ),

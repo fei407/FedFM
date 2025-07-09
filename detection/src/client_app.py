@@ -14,7 +14,6 @@ from flwr.common.typing import NDArrays, Scalar
 from transformers import TrainingArguments, Trainer
 
 from .dataset import (
-    get_processor,
     load_data,
     replace_keys,
 )
@@ -41,8 +40,8 @@ class FlowerClient(NumPyClient):
              model_cfg: DictConfig,
              train_cfg: DictConfig,
              trainset,
+             image_processor,
              collate_fn,
-             processor,
              num_rounds,
              rank_choices,
              group_id,
@@ -54,8 +53,8 @@ class FlowerClient(NumPyClient):
         self.train_cfg = train_cfg
         self.num_rounds = num_rounds
         self.trainset = trainset
+        self.image_processor  = image_processor
         self.collate_fn  = collate_fn
-        self.processor  = processor
 
         # instantiate model
         self.model = get_model(model_cfg, rank_choices, group_id, peft_name, scaling_method)
@@ -86,11 +85,11 @@ class FlowerClient(NumPyClient):
 
         # Construct trainer
         trainer = Trainer(
-            model          = self.model,
-            args           = self.training_arguments,
-            train_dataset  = self.trainset,
-            tokenizer      = self.processor,
-            data_collator  = self.collate_fn,
+            model               = self.model,
+            args                = self.training_arguments,
+            train_dataset       = self.trainset,
+            processing_class    = self.image_processor,
+            data_collator       = self.collate_fn,
         )
 
         # Do local training
@@ -101,7 +100,6 @@ class FlowerClient(NumPyClient):
             len(self.trainset),
             {"train_loss": results.training_loss},
         )
-
 
 def client_fn(context: Context):
     """Create a Flower client representing a single organization."""
@@ -140,15 +138,15 @@ def client_fn(context: Context):
         print(f"INFO :      Device: {edge_device} | Group: {group_id} | Rank: {rank}")
 
     # Let's get the client partition
-    client_trainset, processor, collate_fn  = load_data(partition_id, num_partitions, cfg.dataset.name, cfg.model.name)
+    client_trainset, image_processor, collate_fn  = load_data(partition_id, num_partitions, cfg.dataset.name, cfg.model.name)
 
 
     return FlowerClient(
         cfg.model,
         cfg.train,
         client_trainset,
+        image_processor,
         collate_fn,
-        processor,
         num_rounds,
         rank_choices,
         group_id,

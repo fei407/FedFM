@@ -8,10 +8,11 @@ import torch.nn.init as init
 
 from flwr.common.typing import NDArrays
 
-from transformers import DeformableDetrForObjectDetection
+from transformers import DeformableDetrForObjectDetection, AutoModelForObjectDetection, AutoConfig
 from peft import (
     LoraConfig,
-    get_peft_model,
+    TaskType,
+    PeftModel
 )
 
 from .utils import print_state_dict_size
@@ -75,33 +76,34 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
     new_label2id = {label: i for i, label in enumerate(label_mapping.keys())}
     new_id2label = {i: label for label, i in new_label2id.items()}
 
-    model = DeformableDetrForObjectDetection.from_pretrained(
+    model = AutoModelForObjectDetection.from_pretrained(
         model_cfg.name,
-        low_cpu_mem_usage=False,
-        device_map=None,
+        ignore_mismatched_sizes=True
     )
 
-    num_old_classes = 91  # COCO 原始类别
-    num_new_classes = 111  # 你现在的总类别数
+    num_old_classes = 91
+    num_new_classes = 111
+    old_head = model.class_embed
+    in_features = old_head[0].in_features
+    num_layers = len(old_head)
 
-    # 2) 原分类头是 ModuleList，每个 decoder layer 对应一个 Linear
-    old_head = model.class_embed  # nn.ModuleList([...])
-    in_features = old_head[0].in_features  # 每个 Linear 输入维度相同
+    # 创建一个共享的 Linear 层
+    shared_head = nn.Linear(in_features, num_new_classes)
 
-    # 3) 构造新的 ModuleList 并拷贝前 91 类权重
-    new_head = nn.ModuleList([
-        nn.Linear(in_features, num_new_classes)
-    ])
-
+    # 拷贝原权重
     with torch.no_grad():
-        new_head[0].weight[:num_old_classes] = old_head[0].weight
-        new_head[0].bias[:num_old_classes] = old_head[0].bias
+        shared_head.weight[:num_old_classes] = old_head[0].weight
+        shared_head.bias[:num_old_classes] = old_head[0].bias
 
-    # 4) 替换回模型
+    # 用共享 Linear 填充 ModuleList
+    new_head = nn.ModuleList([shared_head] * num_layers)
+
     model.class_embed = new_head
-
     model.config.label2id = new_label2id
     model.config.id2label = new_id2label
+
+    linear_names = [n for n, m in model.named_modules() if isinstance(m, nn.Linear)
+                    and ("q_proj" in n or "v_proj" in n)]  # 举例，只给注意力 q/v 做 LoRA
 
     if peft_name == "fft":
         pass
@@ -120,14 +122,14 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 r=rank,
                 lora_alpha=alpha,
                 lora_dropout=0.05,
-                task_type="FEATURE_EXTRACTION",
-                target_modules=["q_proj", "v_proj"],
+                task_type=TaskType.FEATURE_EXTRACTION,
+                target_modules=linear_names,
                 use_rslora=use_rslora,
             )
 
             adapter_name = f"group_{i}"
             if i == 0:
-                model = get_peft_model(model, peft_config, adapter_name=adapter_name)
+                model = PeftModel(model, peft_config, adapter_name=adapter_name)
             else:
                 model.add_adapter(adapter_name, peft_config)
 
@@ -147,14 +149,14 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 r=rank,
                 lora_alpha=alpha,
                 lora_dropout=0.05,
-                task_type="FEATURE_EXTRACTION",
-                target_modules=["q_proj", "v_proj"],
+                task_type=TaskType.FEATURE_EXTRACTION,
+                target_modules=linear_names,
                 use_rslora=use_rslora,
             )
 
             adapter_name = f"group_{i}"
             if i == 0:
-                model = get_peft_model(model, peft_config, adapter_name=adapter_name)
+                model = PeftModel(model, peft_config, adapter_name=adapter_name)
             else:
                 model.add_adapter(adapter_name, peft_config)
 
@@ -168,7 +170,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
         raise ValueError("Unknown local training method.")
 
     for name, param in model.named_parameters():
-        if "reference_points" in name or "class_embed" in name or "bbox_embed" in name:
+        if "class_embed" in name or "bbox_embed" in name:
             param.requires_grad = True
 
     return model
@@ -192,6 +194,9 @@ def set_global_parameters(model, parameters: NDArrays, peft_name, fl_method) -> 
         selected_keys = [k for k in full_state_dict if "lora_B" in k and "group_" in k]
     else:
         raise ValueError(f"Invalid peft_name: {peft_name}. Please use 'fft', 'lora', or 'ffa'.")
+
+    if peft_name != "fft":
+        selected_keys += [k for k in full_state_dict if "class_embed" in k or "bbox_embed" in k]
 
     params_dict = zip(selected_keys, parameters)
     state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
@@ -219,9 +224,12 @@ def set_local_parameters(model, parameters: NDArrays, group_id: str, peft_name, 
     else:
         raise ValueError(f"Invalid peft_name: {peft_name}. Please use 'fft', 'lora', or 'ffa'.")
 
+    if peft_name != "fft":
+        selected_keys += [k for k in full_state_dict if "class_embed" in k or "bbox_embed" in k]
+
     params_dict = zip(selected_keys, parameters)
     if (peft_name == "lora" and fl_method != "nbias") or peft_name == "ffa":
-        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict if group_id in k})
+        state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict if group_id in k or "class_embed" in k or "bbox_embed" in k})
     else:
         state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
     model.load_state_dict(state_dict, strict=False)
@@ -236,9 +244,9 @@ def get_local_parameters(model, group_id, peft_name) -> NDArrays:
     if peft_name == "fft":
         state_dict = {k: v.clone().detach() for k, v in local_state_dict.items()}
     elif peft_name == "lora":
-        state_dict = {k: v.clone().detach() for k, v in local_state_dict.items() if "lora_" in k and group_id in k}
+        state_dict = {k: v.clone().detach() for k, v in local_state_dict.items() if ("lora_" in k and group_id in k ) or "class_embed" in k or "bbox_embed" in k}
     elif peft_name == "ffa":
-        state_dict = {k: v.clone().detach() for k, v in local_state_dict.items() if "lora_B" in k and group_id in k}
+        state_dict = {k: v.clone().detach() for k, v in local_state_dict.items() if ("lora_B" in k and group_id in k) or "class_embed" in k or "bbox_embed" in k}
     else:
         raise ValueError(f"Invalid peft_name: {peft_name}. Please use 'fft', 'lora', or 'ffa'.")
 
@@ -259,11 +267,16 @@ def get_global_parameters(model, peft_name, fl_method) -> NDArrays:
                 for k in global_state_dict
                 if "lora_A.group_0" in k
             }
+
+            # Also include classification and bbox prediction layers for global update
+            for k in global_state_dict:
+                if "class_embed" in k or "bbox_embed" in k:
+                    group_state_dict[k] = global_state_dict[k].clone().detach()
         else:
-            group_state_dict = {k: v.clone().detach() for k, v in model.state_dict().items() if "lora_" in k and "group_" in k}
+            group_state_dict = {k: v.clone().detach() for k, v in model.state_dict().items() if ("lora_" in k and "group_" in k) or "class_embed" in k or "bbox_embed" in k}
     elif peft_name == "ffa":
         group_state_dict = {
-            k: v.clone().detach() for k, v in global_state_dict.items() if ("lora_B" in k and f"group_" in k)
+            k: v.clone().detach() for k, v in global_state_dict.items() if ("lora_B" in k and f"group_" in k) or "class_embed" in k or "bbox_embed" in k
         }
     else:
         raise ValueError(f"Invalid peft_name: {peft_name}. Please use 'fft', 'lora', or 'ffa'.")

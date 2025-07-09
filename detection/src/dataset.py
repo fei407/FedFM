@@ -1,121 +1,129 @@
-import random, numpy as np, torch, albumentations as A
-from torch.utils.data import Dataset
-from functools import partial
-from transformers import DeformableDetrImageProcessor
+import torch
+import numpy as np
+
 from flwr_datasets.partitioner import IidPartitioner
 from flwr_datasets import FederatedDataset
-import torch.nn.functional as F
+
+import albumentations as A
+from transformers.image_processing_utils import BatchFeature
+from collections.abc import Mapping
+from typing import Any, Optional, Union
+
+from functools import partial
+
+import transformers
+from transformers import (
+    AutoConfig,
+    AutoImageProcessor,
+    AutoModelForObjectDetection,
+    HfArgumentParser,
+    Trainer,
+    TrainingArguments,
+)
 
 FDS = None  # Cache FederatedDataset
-PROCESSOR  = None
 
-SCALES = [480,512,544,576,608,640,672,704,736,768,800]
+image_square_size = 600
+max_size = image_square_size
+train_augment_and_transform = A.Compose(
+    [
+        A.Compose(
+            [
+                A.SmallestMaxSize(max_size=max_size, p=1.0),
+                A.RandomSizedBBoxSafeCrop(height=max_size, width=max_size, p=1.0),
+            ],
+            p=0.2,
+        ),
+        A.OneOf(
+            [
+                A.Blur(blur_limit=7, p=0.5),
+                A.MotionBlur(blur_limit=7, p=0.5),
+                A.Defocus(radius=(1, 5), alias_blur=(0.1, 0.25), p=0.1),
+            ],
+            p=0.1,
+        ),
+        A.Perspective(p=0.1),
+        A.HorizontalFlip(p=0.5),
+        A.RandomBrightnessContrast(p=0.5),
+        A.HueSaturationValue(p=0.1),
+    ],
+    bbox_params=A.BboxParams(format="coco", label_fields=["category"], clip=True, min_area=25),
+)
 
-def build_aug_pipelines():
-    # 随机水平翻转
-    aug_flip = A.HorizontalFlip(p=0.5)
+def format_image_annotations_as_coco(
+    image_id: str, categories: list[int], bboxes: list[tuple[float]]
+) -> dict:
+    """Format one set of image annotations to the COCO format
 
-    # 多尺度 resize
-    aug_resize1 = A.Compose([
-        A.OneOf([A.SmallestMaxSize(s) for s in SCALES], p=1.0),
-        A.LongestMaxSize(max_size=1333),
-    ])
+    Args:
+        image_id (str): image id. e.g. "0001"
+        categories (list[int]): list of categories/class labels corresponding to provided bounding boxes
+        bboxes (list[tuple[float]]): list of bounding boxes provided in COCO format
+            ([center_x, center_y, width, height] in absolute coordinates)
 
-    # 小尺寸随机裁剪后再 resize
-    aug_resize2 = A.Compose([
-        A.OneOf([
-            A.SmallestMaxSize(400),
-            A.SmallestMaxSize(500),
-            A.SmallestMaxSize(600),
-        ], p=1.0),
-        A.RandomResizedCrop(size=(384, 600), scale=(0.5,1.0), ratio=(0.75,1.33), p=1.0),
-        A.LongestMaxSize(max_size=1333),
-    ])
-
-    train_tf = A.Compose(
-        [aug_flip, A.OneOf([aug_resize1, aug_resize2], p=1.0)],
-        bbox_params=A.BboxParams(format="coco", label_fields=["class_labels"]),
-    )
-
-    val_tf = A.Compose(
-        [A.SmallestMaxSize(800), A.LongestMaxSize(max_size=1333)],
-        bbox_params=A.BboxParams(format="coco", label_fields=["class_labels"]),
-    )
-
-    return train_tf
-
-def get_processor(model_name: str):
-    global PROCESSOR
-    if PROCESSOR is None:
-        PROCESSOR = DeformableDetrImageProcessor.from_pretrained(model_name)
-    return PROCESSOR
-
-def xywh_to_cxcywh_norm(boxes, size):
-    W, H = size
-    return [[(x + w * 0.5) / W, (y + h * 0.5) / H, w / W, h / H] for x, y, w, h in boxes]
-
-class TorchDetectionDataset(Dataset):
-    def __init__(self, dataset, processor, transform):
-        self.dataset = dataset
-        self.processor = processor
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        example = self.dataset[idx]
-        image = np.array(example["image"].convert("RGB"))
-        boxes = example["objects"]["bboxes"]
-        classes = example["objects"]["classes"]
-
-        aug = self.transform(image=image, bboxes=boxes, class_labels=classes)
-        img_aug = aug["image"]
-        boxes_aug = aug["bboxes"]
-        cls_aug = aug["class_labels"]
-
-        h, w = img_aug.shape[:2]
-        boxes_norm = np.asarray(
-            xywh_to_cxcywh_norm(boxes_aug, (w, h)),
-            dtype=np.float32
-        ).reshape(-1, 4)
-
-        enc = self.processor(images=img_aug, return_tensors="pt")
-
-        return {
-            "pixel_values": enc["pixel_values"][0],
-            "labels": {
-                "class_labels": torch.tensor(cls_aug, dtype=torch.long),
-                "boxes": torch.tensor(boxes_norm, dtype=torch.float32)
-            }
+    Returns:
+        dict: {
+            "image_id": image id,
+            "annotations": list of formatted annotations
         }
+    """
+    annotations = []
+    for category, bbox in zip(categories, bboxes):
+        area = bbox[2] * bbox[3]
+        formatted_annotation = {
+            "image_id": image_id,
+            "category_id": category,
+            "iscrowd": 0,
+            "area": area,
+            "bbox": list(bbox),
+        }
+        annotations.append(formatted_annotation)
 
-def collate_fn(batch):
-    pad_value: float = 0.0
-    batch = [b for b in batch if b is not None]
+    return {
+        "image_id": image_id,
+        "annotations": annotations,
+    }
 
-    pixel_list = [b["pixel_values"] for b in batch]
 
-    max_h = max(img.shape[-2] for img in pixel_list)  # H
-    max_w = max(img.shape[-1] for img in pixel_list)  # W
+def augment_and_transform_batch(
+    examples: Mapping[str, Any],
+    transform: A.Compose,
+    image_processor: AutoImageProcessor,
+    return_pixel_mask: bool = False,
+) -> BatchFeature:
+    """Apply augmentations and format annotations in COCO format for object detection task"""
 
-    # 4) 逐张进行 padding
-    padded_imgs = []
-    for img in pixel_list:  # img: [3, H, W]
-        _, h, w = img.shape
-        pad_h = max_h - h
-        pad_w = max_w - w
-        # F.pad 的顺序：(left, right, top, bottom)
-        img = F.pad(img, (0, pad_w,  # width  方向 → 右侧 pad
-                          0, pad_h),  # height 方向 → 下侧 pad
-                    value=pad_value)
-        padded_imgs.append(img)
+    images = []
+    annotations = []
 
-    # 5) 组装 batch
-    pixel_values = torch.stack(padded_imgs)  # [B, 3, max_h, max_w]
-    labels = [b["labels"] for b in batch]
+    for image_id, image, objects in zip(examples["id"], examples["image"], examples["objects"]):
+        image = np.array(image.convert("RGB"))
 
-    return {"pixel_values": pixel_values, "labels": labels}
+        # apply augmentations
+        output = transform(image=image, bboxes=objects["bboxes"], category=objects["classes"])
+        images.append(output["image"])
+
+        # format annotations in COCO format
+        formatted_annotations = format_image_annotations_as_coco(
+            image_id, output["category"], output["bboxes"]
+        )
+        annotations.append(formatted_annotations)
+
+    # Apply the image processor transformations: resizing, rescaling, normalization
+    result = image_processor(images=images, annotations=annotations, return_tensors="pt")
+
+    if not return_pixel_mask:
+        result.pop("pixel_mask", None)
+
+    return result
+
+def collate_fn(batch: list[BatchFeature]) -> Mapping[str, Union[torch.Tensor, list[Any]]]:
+    data = {}
+    data["pixel_values"] = torch.stack([x["pixel_values"] for x in batch])
+    data["labels"] = [x["labels"] for x in batch]
+    if "pixel_mask" in batch[0]:
+        data["pixel_mask"] = torch.stack([x["pixel_mask"] for x in batch])
+    return data
 
 def load_data(partition_id: int,
               num_partitions: int,
@@ -136,12 +144,22 @@ def load_data(partition_id: int,
     raw_ds = FDS.load_partition(partition_id, split)
     print(f"[Client {partition_id}] Got {len(raw_ds)} samples.")
 
-    img_processor = get_processor(model_name)
-    tf = build_aug_pipelines()
+    image_processor = AutoImageProcessor.from_pretrained(
+        model_name,
+        do_resize=True,
+        size={"max_height": image_square_size, "max_width": image_square_size},
+        do_pad=True,
+        pad_size={"height": image_square_size, "width": image_square_size},
+        use_fast=True,
+    )
 
-    raw_ds = TorchDetectionDataset(raw_ds, processor=img_processor, transform=tf)
+    train_transform_batch = partial(
+        augment_and_transform_batch, transform=train_augment_and_transform, image_processor=image_processor
+    )
 
-    return raw_ds, img_processor, collate_fn
+    trainset = raw_ds.with_transform(train_transform_batch)
+
+    return trainset, image_processor, collate_fn
 
 
 def replace_keys(input_dict, match="-", target="_"):
