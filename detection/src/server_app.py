@@ -119,7 +119,7 @@ def get_evaluate_fn(global_model, save_every_round, total_round, save_path, peft
 
         print(f"INFO :      server round: {server_round}")
         if server_round != 0 and (
-            server_round == total_round or server_round % save_every_round == 0
+            server_round == total_round
         ):
             model = global_model
             set_global_parameters(model, parameters, peft_name, fl_method)
