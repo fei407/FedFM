@@ -186,7 +186,7 @@ def server_fn(context: Context):
     current_time = datetime.now()
     timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
     folder_name = f"{cfg.fl.peft_name}_{cfg.fl.fl_method}_{cfg.fl.scaling_method}_{timestamp}"
-    save_path = os.path.join(os.getcwd(), f"results/{folder_name}")
+    save_path = os.path.join(os.getcwd(), f"od_results/{folder_name}")
     os.makedirs(save_path, exist_ok=True)
 
     # Get initial model weights
@@ -212,8 +212,12 @@ def server_fn(context: Context):
 
     global_model = get_model(cfg.model, rank_choices, "group_0", cfg.fl.peft_name, cfg.fl.scaling_method)
 
-    # for name, param in global_model.named_parameters():
-    #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
+    for name, param in global_model.named_parameters():
+        print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
+
+    trainable = sum(p.numel() for p in global_model.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in global_model.parameters())
+    # print(f"Trainable Parameters: {trainable / 1e6:.2f}M / {total / 1e6:.2f}M")
 
     init_model_ndarrays = get_global_parameters(global_model, cfg.fl.peft_name, cfg.fl.fl_method)
     init_model_parameters = ndarrays_to_parameters(init_model_ndarrays)
@@ -225,9 +229,9 @@ def server_fn(context: Context):
         on_fit_config_fn=get_on_fit_config(save_path),
         fit_metrics_aggregation_fn=get_fit_metrics_agg_fn(save_path),
         initial_parameters=init_model_parameters,
-        # min_available_clients=1,
-        # min_fit_clients=1,
-        # min_evaluate_clients=1,
+        min_available_clients=1,
+        min_fit_clients=1,
+        min_evaluate_clients=1,
         evaluate_fn=get_evaluate_fn(
             global_model, cfg.train.save_every_round, num_rounds, save_path, cfg.fl.peft_name, cfg.fl.fl_method
         ),

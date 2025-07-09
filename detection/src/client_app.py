@@ -1,22 +1,20 @@
 """flowertune-llm: A Flower / FlowerTune app."""
 
-import os
-import warnings
+import os, warnings, torch
+from platform import processor
 from typing import Dict, Tuple
-import traceback
 
 from omegaconf import DictConfig
 
-import torch
 from flwr.client import ClientApp, NumPyClient
 from flwr.common import Context
 from flwr.common.config import unflatten_dict
 from flwr.common.typing import NDArrays, Scalar
 
-from trl import SFTConfig, SFTTrainer
+from transformers import TrainingArguments, Trainer
 
 from .dataset import (
-    get_tokenizer,
+    get_processor,
     load_data,
     replace_keys,
 )
@@ -31,7 +29,6 @@ from .models import (
 from .utils import print_trainable_params, set_seed
 
 # Avoid warnings
-os.environ["TOKENIZERS_PARALLELISM"] = "true"
 os.environ["RAY_DISABLE_DOCKER_CPU_WARNING"] = "1"
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -44,7 +41,8 @@ class FlowerClient(NumPyClient):
              model_cfg: DictConfig,
              train_cfg: DictConfig,
              trainset,
-             tokenizer,
+             collate_fn,
+             processor,
              num_rounds,
              rank_choices,
              group_id,
@@ -54,16 +52,11 @@ class FlowerClient(NumPyClient):
     ): # pylint: disable=too-many-arguments
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.train_cfg = train_cfg
-        self.training_arguments = SFTConfig(
-            **train_cfg.training_arguments,
-            dataset_text_field = "text",
-            max_length = train_cfg.seq_length,
-            completion_only_loss = True,
-            report_to=[],
-        )
         self.num_rounds = num_rounds
         self.trainset = trainset
-        self.tokenizer = tokenizer
+        self.collate_fn  = collate_fn
+        self.processor  = processor
+
         # instantiate model
         self.model = get_model(model_cfg, rank_choices, group_id, peft_name, scaling_method)
         self.group_id = group_id
@@ -71,6 +64,8 @@ class FlowerClient(NumPyClient):
         self.fl_method = fl_method
 
         print_trainable_params(self.model)
+
+        self.training_arguments = TrainingArguments(**train_cfg.training_arguments)
 
     def fit(
         self, parameters: NDArrays, config: Dict[str, Scalar]
@@ -87,16 +82,15 @@ class FlowerClient(NumPyClient):
 
         self.training_arguments.learning_rate = new_lr
         self.training_arguments.output_dir = config["save_path"]
-
-        self.model.enable_input_require_grads()
         self.model.config.use_cache = False
 
         # Construct trainer
-        trainer = SFTTrainer(
-            model=self.model,
-            args=self.training_arguments,
-            train_dataset=self.trainset,
-            processing_class=self.tokenizer,
+        trainer = Trainer(
+            model          = self.model,
+            args           = self.training_arguments,
+            train_dataset  = self.trainset,
+            tokenizer      = self.processor,
+            data_collator  = self.collate_fn,
         )
 
         # Do local training
@@ -146,14 +140,15 @@ def client_fn(context: Context):
         print(f"INFO :      Device: {edge_device} | Group: {group_id} | Rank: {rank}")
 
     # Let's get the client partition
-    client_trainset = load_data(partition_id, num_partitions, cfg.dataset.name)
-    tokenizer = get_tokenizer(cfg.model.name)
+    client_trainset, processor, collate_fn  = load_data(partition_id, num_partitions, cfg.dataset.name, cfg.model.name)
+
 
     return FlowerClient(
         cfg.model,
         cfg.train,
         client_trainset,
-        tokenizer,
+        collate_fn,
+        processor,
         num_rounds,
         rank_choices,
         group_id,
