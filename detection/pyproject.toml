@@ -34,7 +34,7 @@ num-server-rounds = 2
 strategy.fraction-fit = 1
 strategy.fraction-evaluate = 0.0
 
-dataset.name = "fw407/lvis-110-hl"
+dataset.name = "fw407/lvis-fruit"
 model.name = "SenseTime/deformable-detr"
 
 fl.rank-choices = "64,16,4"

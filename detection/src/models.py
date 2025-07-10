@@ -19,18 +19,9 @@ from .utils import print_state_dict_size
 import torch.nn as nn
 
 label_mapping= {
-    "N/A": -1,
-    "person": 792, "bicycle": 93, "car": 206, "motorcycle": 702,  "airplane": 2, "bus": 172, "train": 1114, "truck": 1122, "boat": 117, "traffic_light": 1111,
-    "fireplug": 444, "street_sign": 1025, "stop_sign": 1018, "parking_meter": 765, "bench": 89, "bird": 98, "cat": 224, "dog": 377, "horse": 568, "sheep": 942,
-    "cow": 79, "elephant": 421, "bear": 75, "zebra": 1201, "giraffe": 495, "hat": 543, "backpack": 33, "umbrella": 1132, "shoe": 947, "eyeglasses": -1,
-    "handbag": 34, "tie": 715, "suitcase": 35, "frisbee": 473, "ski": 963, "snowboard": 975, "sports_ball": -1, "kite": 610, "baseball_bat": 57, "baseball_glove": 59,
-    "skateboard": 961, "surfboard": 1036, "tennis_racket": 1078, "bottle": 132, "plate": 817, "wineglass": 1189, "cup": 343, "fork": 468, "knife": 614, "spoon": 999,
-    "bowl": 138, "banana": 44, "apple": 11, "sandwich": 911, "orange": 734, "broccoli": 153, "carrot": 216, "hotdog": -1, "pizza": 815, "donut": 386,
-    "cake": 182, "chair": 231, "sofa": 981, "potted_plant": -1, "bed": 76, "mirror": 693, "dining_table": 366, "window": -1, "desk": 360, "toilet": 1096,
-    "door": -1, "television": 1076, "laptop": 630, "mouse": 704, "remote_control": 880, "keyboard": 295, "cellphone": 229, "microwave": 686, "oven": 738, "toaster": 1094,
-    "sink": 960, "refrigerator": 420, "blender": 111, "book": 126, "clock": 270, "vase": 1138, "scissors": 922, "teddy_bear": 1070, "hair_dryer": 533, "toothbrush": 1101,
-    "tomato": 1098, "onion": 733, "eggplant": 418, "ginger": 494, "garlic": 486, "lettuce": 640, "cucumber": 341, "celery": 228, "potato": 837, "zucchini": 1202,
-    "blueberry": 115, "strawberry": 1024, "cherry": 238, "coconut": 282, "peach": 773, "grape": 509, "kiwi_fruit": 640, "lemon": 638, "pineapple": 805, "watermelon": 1171,
+    "apple": 11, "avocado": 26, "banana": 44, "blackberry": 107, "blueberry": 115, "cantaloup": 200, "cherry": 238, "clementine": 265, "coconut": 282, "fig": 434,
+    "grape": 509, "kiwi": 612, "lemon": 638, "lime": 646, "mandarin_orange": 665, "melon": 683, "orange": 734, "papaya": 754, "peach": 773, "pear":775,
+    "pineapple": 805, "raspberry": 871, "strawberry": 1024, "watermelon": 1171
 }
 
 def orthogonal_lora_init(model, init_A):
@@ -73,37 +64,22 @@ def cosine_annealing(
 def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, peft_name, scaling_method):
     """Load model with appropriate quantization config and other optimizations.
     """
+    num_labels = len(label_mapping)
     new_label2id = {label: i for i, label in enumerate(label_mapping.keys())}
     new_id2label = {i: label for label, i in new_label2id.items()}
 
-    model = AutoModelForObjectDetection.from_pretrained(
+    config = AutoConfig.from_pretrained(
         model_cfg.name,
-        ignore_mismatched_sizes=True
+        num_labels=num_labels,
+        label2id=new_label2id,
+        id2label=new_id2label,
     )
 
-    num_old_classes = 91
-    num_new_classes = 111
-    old_head = model.class_embed
-    in_features = old_head[0].in_features
-    num_layers = len(old_head)
-
-    # 创建一个共享的 Linear 层
-    shared_head = nn.Linear(in_features, num_new_classes)
-
-    # 拷贝原权重
-    with torch.no_grad():
-        shared_head.weight[:num_old_classes] = old_head[0].weight
-        shared_head.bias[:num_old_classes] = old_head[0].bias
-
-    # 用共享 Linear 填充 ModuleList
-    new_head = nn.ModuleList([shared_head] * num_layers)
-
-    model.class_embed = new_head
-    model.config.label2id = new_label2id
-    model.config.id2label = new_id2label
-
-    linear_names = [n for n, m in model.named_modules() if isinstance(m, nn.Linear)
-                    and ("q_proj" in n or "v_proj" in n)]  # 举例，只给注意力 q/v 做 LoRA
+    model = AutoModelForObjectDetection.from_pretrained(
+        model_cfg.name,
+        config=config,
+        ignore_mismatched_sizes=True
+    )
 
     if peft_name == "fft":
         pass
@@ -123,7 +99,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 lora_alpha=alpha,
                 lora_dropout=0.05,
                 task_type=TaskType.FEATURE_EXTRACTION,
-                target_modules=linear_names,
+                target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
                 use_rslora=use_rslora,
             )
 
@@ -150,7 +126,7 @@ def get_model(model_cfg: DictConfig, rank_choices: List[int], group_id: str, pef
                 lora_alpha=alpha,
                 lora_dropout=0.05,
                 task_type=TaskType.FEATURE_EXTRACTION,
-                target_modules=linear_names,
+                target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
                 use_rslora=use_rslora,
             )
 
