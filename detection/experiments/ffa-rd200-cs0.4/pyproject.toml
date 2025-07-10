@@ -30,14 +30,14 @@ clientapp = "src.client_app:app"
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824
 enable-parameter-chaining = true
-num-server-rounds = 100
-strategy.fraction-fit = 0.2
+num-server-rounds = 200
+strategy.fraction-fit = 0.4
 strategy.fraction-evaluate = 0.0
 
 dataset.name = "fw407/lvis-fruit"
 model.name = "SenseTime/deformable-detr"
 
-fl.rank-choices = "128,32,16"
+fl.rank-choices = "64,16,4"
 fl.device-nums = "1,4,5"
 
 fl.fl-method = "vanilla"

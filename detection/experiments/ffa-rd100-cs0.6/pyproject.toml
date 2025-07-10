@@ -31,7 +31,7 @@ clientapp = "src.client_app:app"
 grpc-max-message-length = 1073741824
 enable-parameter-chaining = true
 num-server-rounds = 100
-strategy.fraction-fit = 0.2
+strategy.fraction-fit = 0.6
 strategy.fraction-evaluate = 0.0
 
 dataset.name = "fw407/lvis-fruit"
@@ -40,9 +40,9 @@ model.name = "SenseTime/deformable-detr"
 fl.rank-choices = "64,16,4"
 fl.device-nums = "1,4,5"
 
-fl.fl-method = "nbias"
-fl.peft-name = "lora"
-fl.scaling-method = "normal"
+fl.fl-method = "vanilla"
+fl.peft-name = "ffa"
+fl.scaling-method = "sqrt"
 
 train.save-every-round = 10
 train.learning-rate-max = 1e-3

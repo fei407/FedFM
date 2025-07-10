@@ -30,7 +30,7 @@ clientapp = "src.client_app:app"
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824
 enable-parameter-chaining = true
-num-server-rounds = 100
+num-server-rounds = 200
 strategy.fraction-fit = 0.2
 strategy.fraction-evaluate = 0.0
 
@@ -40,9 +40,9 @@ model.name = "SenseTime/deformable-detr"
 fl.rank-choices = "64,16,4"
 fl.device-nums = "1,4,5"
 
-fl.fl-method = "zero-padding"
-fl.peft-name = "lora"
-fl.scaling-method = "normal"
+fl.fl-method = "vanilla"
+fl.peft-name = "ffa"
+fl.scaling-method = "sqrt"
 
 train.save-every-round = 10
 train.learning-rate-max = 1e-3
