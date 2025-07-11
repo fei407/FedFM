@@ -1,7 +1,9 @@
 import torch
 import numpy as np
 
-from flwr_datasets.partitioner import IidPartitioner
+from collections import defaultdict
+
+from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
 from flwr_datasets import FederatedDataset
 
 import albumentations as A
@@ -125,6 +127,34 @@ def collate_fn(batch: list[BatchFeature]) -> Mapping[str, Union[torch.Tensor, li
         data["pixel_mask"] = torch.stack([x["pixel_mask"] for x in batch])
     return data
 
+
+
+def count_labels_per_client(FDS, num_clients, split, id2label=None, num_classes=6):
+    client_label_counts = defaultdict(lambda: [0] * num_classes)
+
+    for partition_id in range(num_clients):
+        raw_ds = FDS.load_partition(partition_id, split)
+        seen = set()  # 防止重复计入样本
+
+        for example in raw_ds:
+            unique_labels = set(example["objects"]["classes"])
+            for label in unique_labels:
+                client_label_counts[partition_id][label] += 1
+
+        print(f"[Client {partition_id}] Got {len(raw_ds)} samples.")
+
+    # 打印统计结果
+    print("\n✅ 每个客户端中每类在图像中出现的次数（图级别）:")
+    print("-" * 60)
+    for cid in range(num_clients):
+        print(f"Client {cid}:")
+        for cls_id, count in enumerate(client_label_counts[cid]):
+            label_name = id2label(cls_id) if id2label else str(cls_id)
+            print(f"  {label_name:<12} : {count} images")
+        print("-" * 40)
+
+    return client_label_counts
+
 def load_data(partition_id: int,
               num_partitions: int,
               dataset_name: str,
@@ -143,6 +173,9 @@ def load_data(partition_id: int,
         )
     raw_ds = FDS.load_partition(partition_id, split)
     print(f"[Client {partition_id}] Got {len(raw_ds)} samples.")
+
+    # id2label = raw_ds.features["objects"].feature["classes"].int2str
+    # count_labels_per_client(FDS, num_clients=num_partitions, split="train", id2label=id2label)
 
     image_processor = AutoImageProcessor.from_pretrained(
         model_name,

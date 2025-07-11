@@ -19,8 +19,7 @@ from .utils import print_state_dict_size
 import torch.nn as nn
 
 label_mapping= {
-    "apple": 11, "avocado": 26, "banana": 44, "blueberry": 115, "cherry": 238, "grape": 509, "kiwi": 612, "lemon": 638,
-    "lime": 646, "orange": 734, "peach": 773, "pear":775, "pineapple": 805, "raspberry": 871, "strawberry": 1024, "watermelon": 1171
+    "street_sign": 1025, "hat": 543, "shoe": 947, "sunglasses": 1034, "plate": 817, "mirror": 693
 }
 
 def orthogonal_lora_init(model, init_A):
