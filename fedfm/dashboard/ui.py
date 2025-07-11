@@ -34,7 +34,7 @@ def update_pyproject_toml(
 
 # ------------------ Page Config ------------------
 st.set_page_config(page_title="FedFM Dashboard", layout="wide")
-st.title("🌼 FedFM — Federated Learning Monitor")
+st.title("🌼 FLASH — System Testbed Setups")
 
 # ------------------ Init Session State ------------------
 st.session_state.setdefault("device_status", None)

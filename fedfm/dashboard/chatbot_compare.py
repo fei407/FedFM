@@ -100,23 +100,23 @@ def load_raw_model(model_name_or_path):
     return model, tokenizer
 
 def render():
-    st.subheader("💾 Model loading")
+    st.subheader("📂 Model loading")
 
-    default_peft_path = "/home/fw407/workspace/results/ffa_vanilla_sqrt/peft_100"
+    default_peft_path = "/home/fw407/workspace/results/ffa_dr_sqrt/peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
 
     path_col, browse_col = st.columns([4, 1])
     with path_col:
         st.session_state["peft_path"] = st.text_input("PEFT model path", st.session_state["peft_path"])
     with browse_col:
-        if st.button("📂", key="pick_peft"):
+        if st.button("📂 Choose files", key="pick_peft"):
             root = tk.Tk(); root.withdraw()
             selected = filedialog.askdirectory(initialdir=st.session_state["peft_path"])
             root.destroy()
             if selected:
                 st.session_state["peft_path"] = selected
 
-        if st.button("Load Fine-Tuned Model", key="load_peft", type="secondary"):
+        if st.button("Load the finetuned model", key="load_peft", type="secondary"):
             base_path = st.session_state["peft_path"]
             adapter_names = [f"group_{i}" for i in range(3)]
 
@@ -142,7 +142,7 @@ def render():
                 # for name, param in ft_model.named_parameters():
                 #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
 
-                st.success("Finetuned model with multiple adapters loaded.")
+                st.success("Model is loaded.")
 
     if "tokenizer" not in st.session_state or "raw_model" not in st.session_state:
         st.session_state["raw_model"], st.session_state["tokenizer"] = load_raw_model(model_name)
@@ -185,89 +185,52 @@ def render():
         inputs = tokenizer(prompt, return_tensors="pt").to(args.device)
         input_len = inputs["input_ids"].shape[-1]
 
-        # Base Model
-        raw_outputs = st.session_state["raw_model"].generate(
-            **inputs,
-            max_new_tokens=args.max_new,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            do_sample=True,
-            repetition_penalty=1.1,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+        if "finetuned_model" in st.session_state:
+            # Base Model
+            raw_outputs = st.session_state["raw_model"].generate(
+                **inputs,
+                max_new_tokens=args.max_new,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                do_sample=True,
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
 
-        st.session_state.base_ans = tokenizer.decode(raw_outputs[0][input_len:], skip_special_tokens=True).strip()
+            st.session_state.base_ans = tokenizer.decode(raw_outputs[0][input_len:], skip_special_tokens=True).strip()
+
+            # Finetuned Model
+
+            ft_outputs = st.session_state["finetuned_model"].generate(
+                **inputs,
+                max_new_tokens=args.max_new,
+                temperature=args.temperature,
+                top_p=args.top_p,
+                do_sample=True,
+                repetition_penalty=1.1,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+
+            st.session_state.ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
+        else:
+            st.warning("Please load finetuned model first!")
 
     col1, col2 = st.columns(2)
 
     with col1:
         with st.chat_message("assistant"):
-            st.markdown("**Base Model Answer (SmolLM2-135M)：**")
-            placeholder = st.empty()
+            st.write("\n### Base Model's Answer (the original SmolLM2-135M): ")
+            content = st.session_state.base_ans.strip().replace("##", "").replace("#", "")
+            st.write(content if content else "🤖 Awaiting generated response...")
 
-            content = st.session_state.base_ans.strip().replace("##", "")
-
-            # 如果内容为空，直接显示默认提示
-            if not content:
-                placeholder.markdown(
-                    "<div style='font-family: monospace; white-space: pre-wrap; color: gray;'>🤖 Awaiting generated response...</div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                # 否则逐字显示
-                display = ""
-                for char in content:
-                    display += char
-                    placeholder.markdown(
-                        f"<div style='font-family: monospace; white-space: pre-wrap;'>{display}</div>",
-                        unsafe_allow_html=True
-                    )
-                    time.sleep(0.01)  # 你可以调节速度
     with col2:
         with st.chat_message("assistant"):
-            st.markdown("**Finetuned Model Answer (SmolLM2-135M + Alpaca-GPT4)：**")
-            placeholder = st.empty()
+            st.write("\n### Finetuned Model's Answer (the SmolLM2-135M model finetuned on the Alpaca-GPT4 dataset): ")
+            content = st.session_state.ft_ans.strip().replace("##", "").replace("#", "")
+            st.write(content if content else "🤖 Awaiting generated response...")
 
-            content = st.session_state.ft_ans.strip().replace("##", "")
-
-            # 如果内容为空，直接显示默认提示
-            if not content:
-                placeholder.markdown(
-                    "<div style='font-family: monospace; white-space: pre-wrap; color: gray;'>🤖 Awaiting generated response...</div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                # 否则逐字显示
-                display = ""
-                for char in content:
-                    display += char
-                    placeholder.markdown(
-                        f"<div style='font-family: monospace; white-space: pre-wrap;'>{display}</div>",
-                        unsafe_allow_html=True
-                    )
-                    time.sleep(0.01)  # 你可以调节速度
-
-            # st.write(st.session_state.base_ans)
-
-        # with st.chat_message("assistant"):
-        #     st.write("**Base Model Answer (SmolLM2-135M)：** "+ base_ans)
-
-        # # Finetuned Model
-        # ft_outputs = st.session_state["finetuned_model"].generate(
-        #     **inputs,
-        #     max_new_tokens=args.max_new,
-        #     temperature=args.temperature,
-        #     top_p=args.top_p,
-        #     do_sample=True,
-        #     repetition_penalty=1.1,
-        #     pad_token_id=tokenizer.pad_token_id,
-        #     eos_token_id=tokenizer.eos_token_id,
-        # )
-        #
-        # ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
-        # with st.chat_message("assistant"):
-        #     st.write("**Finetuned Model Answer (SmolLM2-135M finetuned on alpaca-gpt4)：** "+ ft_ans)
 
 if __name__ == "__main__":
     render()

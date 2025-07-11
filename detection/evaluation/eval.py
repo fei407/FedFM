@@ -6,16 +6,16 @@ from transformers import AutoModelForObjectDetection, AutoProcessor
 model_path = r"C:\Users\fw407\fedfm\object_detection\ffa\peft_100"
 
 # 加载模型和处理器
-model = AutoModelForObjectDetection.from_pretrained("SenseTime/deformable-detr")
-# model = AutoModelForObjectDetection.from_pretrained(model_path)
+# model = AutoModelForObjectDetection.from_pretrained("SenseTime/deformable-detr")
+model = AutoModelForObjectDetection.from_pretrained(model_path)
 processor = AutoProcessor.from_pretrained("SenseTime/deformable-detr")
 
 # 设置模型为评估模式
 model.eval()
 
 # 输入输出路径
-input_image_path = r"C:\Users\fw407\Desktop\detection\image\demo-22.jpg"
-output_image_path = r"C:\Users\fw407\Desktop\detection\output\demo-22.jpg"
+input_image_path = r"C:\Users\fw407\Desktop\detection\image\demo-24.jpg"
+output_image_path = r"C:\Users\fw407\Desktop\detection\output\demo-24.jpg"
 
 # 读取图像
 image_bgr = cv2.imread(input_image_path)
