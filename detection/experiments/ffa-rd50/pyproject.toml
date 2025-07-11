@@ -30,7 +30,7 @@ clientapp = "src.client_app:app"
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824
 enable-parameter-chaining = true
-num-server-rounds = 200
+num-server-rounds = 50
 strategy.fraction-fit = 0.2
 strategy.fraction-evaluate = 0.0
 

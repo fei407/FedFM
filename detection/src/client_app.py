@@ -19,17 +19,12 @@ from .dataset import (
 )
 
 from .models import (
-    cosine_annealing,
     get_model,
     set_local_parameters,
     get_local_parameters,
 )
 
 from .utils import print_trainable_params, set_seed
-
-import torch, math
-from transformers import Trainer
-from transformers.optimization import get_cosine_schedule_with_warmup
 
 # Avoid warnings
 os.environ["RAY_DISABLE_DOCKER_CPU_WARNING"] = "1"
@@ -76,42 +71,6 @@ class FlowerClient(NumPyClient):
         """Implement distributed fit function for a given client."""
         set_local_parameters(self.model, parameters, self.group_id, self.peft_name, self.fl_method)
 
-        base_lr = cosine_annealing(
-            int(config["current_round"]),
-            self.num_rounds,
-            self.train_cfg.learning_rate_max,
-            self.train_cfg.learning_rate_min,
-        )
-
-        head_lr = 5e-4
-
-        head_params, other_params = [], []
-        for name, p in self.model.named_parameters():
-            if not p.requires_grad:
-                continue
-            (head_params if ("class_embed" in name or "bbox_embed" in name)
-             else other_params).append(p)
-
-        optimizer = torch.optim.AdamW(
-            [
-                {"params": head_params, "lr": head_lr},  # 固定 LR
-                {"params": other_params, "lr": base_lr},  # 余弦 LR
-            ],
-            betas=(0.9, 0.999),
-            weight_decay=1e-4,
-        )
-
-        named_params = dict(self.model.named_parameters())
-
-        # for group in optimizer.param_groups:
-        #     lr = group["lr"]
-        #     for p in group["params"]:
-        #         for name, param in named_params.items():
-        #             if param is p:
-        #                 print(f"{name:50} → lr = {lr}")
-        #                 break
-
-        self.training_arguments.learning_rate = base_lr
         self.training_arguments.output_dir = config["save_path"]
         self.model.config.use_cache = False
 
@@ -122,7 +81,6 @@ class FlowerClient(NumPyClient):
             train_dataset       = self.trainset,
             processing_class    = self.image_processor,
             data_collator       = self.collate_fn,
-            optimizers          = (optimizer, None),
         )
 
         # Do local training

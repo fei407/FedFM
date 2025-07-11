@@ -3,10 +3,14 @@
 set +e
 
 EXPERIMENTS=(
-  "experiments/fft-rd100"
+  "experiments/fft-rd10"
+  "experiments/ffa-rd20"
+  "experiments/ffa-rd30"
+  "experiments/ffa-rd50"
+  "experiments/ffa-rd80"
   "experiments/ffa-rd100"
+  "experiments/ffa-rd150"
   "experiments/ffa-rd200"
-  "experiments/ffa-rd300"
 )
 
 for exp_dir in "${EXPERIMENTS[@]}"

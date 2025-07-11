@@ -129,7 +129,7 @@ def get_evaluate_fn(global_model, save_every_round, total_round, save_path, peft
                     model.delete_adapter(adapter_name)
                     print(f"✅ Removed adapters: {list(model.peft_config.keys())}")
                 model = model.merge_and_unload()
-            elif fl_method != "fft":
+            elif peft_name != "fft":
                 for adapter_name in list(model.peft_config.keys()):
                     if adapter_name in ["group_1", "group_2"]:
                         model.delete_adapter(adapter_name)
@@ -194,7 +194,7 @@ def server_fn(context: Context):
     # Create output directory given current timestamp
     current_time = datetime.now()
     timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    folder_name = f"{cfg.fl.peft_name}_{cfg.fl.fl_method}_{cfg.fl.scaling_method}_{timestamp}"
+    folder_name = f"{cfg.fl.peft_name}_rd{num_rounds}_lr1e-3_{timestamp}"
     save_path = os.path.join(os.getcwd(), f"od_results/{folder_name}")
     os.makedirs(save_path, exist_ok=True)
 
