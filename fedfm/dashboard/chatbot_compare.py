@@ -10,6 +10,7 @@ import os
 import math
 import random
 import numpy as np
+import time
 
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -99,7 +100,7 @@ def load_raw_model(model_name_or_path):
     return model, tokenizer
 
 def render():
-    st.subheader("💬 Chatbot Comparison")
+    st.subheader("💾 Model loading")
 
     default_peft_path = "/home/fw407/workspace/results/ffa_vanilla_sqrt/peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
@@ -108,43 +109,47 @@ def render():
     with path_col:
         st.session_state["peft_path"] = st.text_input("PEFT model path", st.session_state["peft_path"])
     with browse_col:
-        if st.button("📂", key="pick_peft", use_container_width=True):
+        if st.button("📂", key="pick_peft"):
             root = tk.Tk(); root.withdraw()
             selected = filedialog.askdirectory(initialdir=st.session_state["peft_path"])
             root.destroy()
             if selected:
                 st.session_state["peft_path"] = selected
 
+        if st.button("Load Fine-Tuned Model", key="load_peft", type="secondary"):
+            base_path = st.session_state["peft_path"]
+            adapter_names = [f"group_{i}" for i in range(3)]
+
+            missing = [name for name in adapter_names if
+                       not os.path.exists(os.path.join(base_path, name, "adapter_config.json"))]
+            if missing:
+                st.error(f"Missing adapter_config.json in: {', '.join(missing)}")
+            else:
+                ft_model = AutoPeftModelForCausalLM.from_pretrained(os.path.join(base_path, adapter_names[0]),
+                                                                    adapter_name=adapter_names[0]).to(
+                    args.device).eval()
+
+                # for name in adapter_names[1:]:
+                #     ft_model.load_adapter(os.path.join(base_path, name), adapter_name=name)
+                #
+                # merge_groups(ft_model)
+                # for adapter_name in list(ft_model.peft_config.keys()):
+                #     ft_model.delete_adapter(adapter_name)
+                #     print(f"✅ Removed adapters: {list(ft_model.peft_config.keys())}")
+
+                st.session_state["finetuned_model"] = ft_model.merge_and_unload()
+
+                # for name, param in ft_model.named_parameters():
+                #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
+
+                st.success("Finetuned model with multiple adapters loaded.")
+
     if "tokenizer" not in st.session_state or "raw_model" not in st.session_state:
         st.session_state["raw_model"], st.session_state["tokenizer"] = load_raw_model(model_name)
 
-    if st.button("Load Fine-Tuned PEFT Model"):
-        base_path = st.session_state["peft_path"]
-        adapter_names = [f"group_{i}" for i in range(3)]
-
-        missing = [name for name in adapter_names if
-                   not os.path.exists(os.path.join(base_path, name, "adapter_config.json"))]
-        if missing:
-            st.error(f"Missing adapter_config.json in: {', '.join(missing)}")
-        else:
-            ft_model = AutoPeftModelForCausalLM.from_pretrained(os.path.join(base_path, adapter_names[0]), adapter_name=adapter_names[0]).to(args.device).eval()
-
-            # for name in adapter_names[1:]:
-            #     ft_model.load_adapter(os.path.join(base_path, name), adapter_name=name)
-            #
-            # merge_groups(ft_model)
-            # for adapter_name in list(ft_model.peft_config.keys()):
-            #     ft_model.delete_adapter(adapter_name)
-            #     print(f"✅ Removed adapters: {list(ft_model.peft_config.keys())}")
-
-            st.session_state["finetuned_model"] = ft_model.merge_and_unload()
-
-            # for name, param in ft_model.named_parameters():
-            #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
-
-            st.success("Finetuned model with multiple adapters loaded.")
-
     ###########
+    st.subheader("💬 Chatbot Comparison")
+
     user_input = st.chat_input("Ask a question")
 
     Q1 = "Give me a list of ten animal names."
@@ -152,6 +157,7 @@ def render():
     Q3 = "How can we reduce air pollution?"
     # Q3 = "Generate a list of interesting riddles."
 
+    st.markdown("**Some pre-set questions：**")
     if st.button(Q1):
         st.session_state["user_input"] = Q1
     if st.button(Q2):
@@ -166,9 +172,15 @@ def render():
     tokenizer = st.session_state["tokenizer"]
     tokenizer.pad_token = tokenizer.eos_token
 
+    if "base_ans" not in st.session_state:
+        st.session_state.base_ans = ""
+    if "ft_ans" not in st.session_state:
+        st.session_state.ft_ans = ""
+
     if user_input:
         with st.chat_message("user"):
-            st.write("**Question：** "+ user_input)
+            st.write("**Question：** " + user_input)
+
         prompt = f"### Instruction:\n{user_input}\n\n### Response:\n"
         inputs = tokenizer(prompt, return_tensors="pt").to(args.device)
         input_len = inputs["input_ids"].shape[-1]
@@ -185,25 +197,77 @@ def render():
             eos_token_id=tokenizer.eos_token_id,
         )
 
-        base_ans = tokenizer.decode(raw_outputs[0][input_len:], skip_special_tokens=True).strip()
-        with st.chat_message("assistant"):
-            st.write("**Base Model Answer (SmolLM2-135M)：** "+ base_ans)
+        st.session_state.base_ans = tokenizer.decode(raw_outputs[0][input_len:], skip_special_tokens=True).strip()
 
-        # Finetuned Model
-        ft_outputs = st.session_state["finetuned_model"].generate(
-            **inputs,
-            max_new_tokens=args.max_new,
-            temperature=args.temperature,
-            top_p=args.top_p,
-            do_sample=True,
-            repetition_penalty=1.1,
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+    col1, col2 = st.columns(2)
 
-        ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
+    with col1:
         with st.chat_message("assistant"):
-            st.write("**Finetuned Model Answer (SmolLM2-135M finetuned on alpaca-gpt4)：** "+ ft_ans)
+            st.markdown("**Base Model Answer (SmolLM2-135M)：**")
+            placeholder = st.empty()
+
+            content = st.session_state.base_ans.strip().replace("##", "")
+
+            # 如果内容为空，直接显示默认提示
+            if not content:
+                placeholder.markdown(
+                    "<div style='font-family: monospace; white-space: pre-wrap; color: gray;'>🤖 Awaiting generated response...</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                # 否则逐字显示
+                display = ""
+                for char in content:
+                    display += char
+                    placeholder.markdown(
+                        f"<div style='font-family: monospace; white-space: pre-wrap;'>{display}</div>",
+                        unsafe_allow_html=True
+                    )
+                    time.sleep(0.01)  # 你可以调节速度
+    with col2:
+        with st.chat_message("assistant"):
+            st.markdown("**Finetuned Model Answer (SmolLM2-135M + Alpaca-GPT4)：**")
+            placeholder = st.empty()
+
+            content = st.session_state.ft_ans.strip().replace("##", "")
+
+            # 如果内容为空，直接显示默认提示
+            if not content:
+                placeholder.markdown(
+                    "<div style='font-family: monospace; white-space: pre-wrap; color: gray;'>🤖 Awaiting generated response...</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                # 否则逐字显示
+                display = ""
+                for char in content:
+                    display += char
+                    placeholder.markdown(
+                        f"<div style='font-family: monospace; white-space: pre-wrap;'>{display}</div>",
+                        unsafe_allow_html=True
+                    )
+                    time.sleep(0.01)  # 你可以调节速度
+
+            # st.write(st.session_state.base_ans)
+
+        # with st.chat_message("assistant"):
+        #     st.write("**Base Model Answer (SmolLM2-135M)：** "+ base_ans)
+
+        # # Finetuned Model
+        # ft_outputs = st.session_state["finetuned_model"].generate(
+        #     **inputs,
+        #     max_new_tokens=args.max_new,
+        #     temperature=args.temperature,
+        #     top_p=args.top_p,
+        #     do_sample=True,
+        #     repetition_penalty=1.1,
+        #     pad_token_id=tokenizer.pad_token_id,
+        #     eos_token_id=tokenizer.eos_token_id,
+        # )
+        #
+        # ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
+        # with st.chat_message("assistant"):
+        #     st.write("**Finetuned Model Answer (SmolLM2-135M finetuned on alpaca-gpt4)：** "+ ft_ans)
 
 if __name__ == "__main__":
     render()

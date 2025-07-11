@@ -95,16 +95,20 @@ if save:
     success_box.empty()
 
 # ------------------ Page Layout ------------------
-col1, col2 = st.columns(2)
+st.subheader("📡 Device Status")
 
-with col1:
-    st.subheader("📡 Device Status")
-    df = pd.DataFrame(st.session_state.device_status)
-    df.columns = ["Node", "Device Name", "IP", "Rank", "Status"]
-    styled_df = df.style.set_table_styles(
-        [{"selector":"th","props":[("text-align","center")]},
-         {"selector":"td","props":[("text-align","center")]}]
-    ).hide(axis="index")
-    st.markdown(styled_df.to_html(escape=False), unsafe_allow_html=True)
-with col2:
-    render_chatbot()
+df = pd.DataFrame(st.session_state.device_status)
+df.columns = ["Node", "Device Name", "IP", "Rank", "Status"]
+
+styled_df = df.style.set_table_styles([
+    {"selector": "th", "props": [("text-align", "center"), ("padding", "6px")]},
+    {"selector": "td", "props": [("text-align", "center"), ("word-wrap", "break-word"), ("max-width", "150px")]},
+]).hide(axis="index")
+
+# 强制表格占满宽度
+html = styled_df.to_html(escape=False)
+html = html.replace('<table ', '<table style="width: 100%; table-layout: fixed;" ')
+st.markdown(html, unsafe_allow_html=True)
+
+
+render_chatbot()

@@ -30,8 +30,8 @@ clientapp = "src.client_app:app"
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824
 enable-parameter-chaining = true
-num-server-rounds = 100
-strategy.fraction-fit = 0.6
+num-server-rounds = 300
+strategy.fraction-fit = 0.2
 strategy.fraction-evaluate = 0.0
 
 dataset.name = "fw407/lvis-6"
@@ -68,4 +68,4 @@ default = "local-simulation"
 [tool.flwr.federations.local-simulation]
 options.num-supernodes = 10
 options.backend.client-resources.num-cpus = 10
-options.backend.client-resources.num-gpus = 0.25
+options.backend.client-resources.num-gpus = 0.5

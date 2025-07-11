@@ -124,12 +124,12 @@ def get_evaluate_fn(global_model, save_every_round, total_round, save_path, peft
             model = global_model
             set_global_parameters(model, parameters, peft_name, fl_method)
 
-            if fl_method== "nbias":
+            if fl_method == "nbias":
                 for adapter_name in list(model.peft_config.keys()):
                     model.delete_adapter(adapter_name)
                     print(f"✅ Removed adapters: {list(model.peft_config.keys())}")
                 model = model.merge_and_unload()
-            elif fl_method!= "fft":
+            elif fl_method != "fft":
                 for adapter_name in list(model.peft_config.keys()):
                     if adapter_name in ["group_1", "group_2"]:
                         model.delete_adapter(adapter_name)
