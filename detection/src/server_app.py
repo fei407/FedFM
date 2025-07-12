@@ -194,7 +194,7 @@ def server_fn(context: Context):
     # Create output directory given current timestamp
     current_time = datetime.now()
     timestamp = current_time.strftime("%Y-%m-%d_%H-%M-%S")
-    folder_name = f"{cfg.fl.peft_name}_rd{num_rounds}_lr1e-3_{timestamp}"
+    folder_name = f"{cfg.fl.peft_name}_rd{num_rounds}_lr{cfg.train.training_arguments.learning_rate}_{timestamp}"
     save_path = os.path.join(os.getcwd(), f"od_results/{folder_name}")
     os.makedirs(save_path, exist_ok=True)
 
