@@ -3,7 +3,7 @@ import torch
 from transformers import AutoModelForObjectDetection, AutoProcessor
 
 # 模型路径
-model_path = r"C:\Users\fw407\fedfm\object_detection\ffa\peft_100"
+model_path = r"C:\Users\fw407\fedfm\object_detection\ffa_rd100"
 
 # 加载模型和处理器
 # model = AutoModelForObjectDetection.from_pretrained("SenseTime/deformable-detr")
@@ -14,8 +14,8 @@ processor = AutoProcessor.from_pretrained("SenseTime/deformable-detr")
 model.eval()
 
 # 输入输出路径
-input_image_path = r"C:\Users\fw407\Desktop\detection\image\demo-24.jpg"
-output_image_path = r"C:\Users\fw407\Desktop\detection\output\demo-24.jpg"
+input_image_path = r"C:\Users\fw407\Desktop\detection\image\demo-26.jpg"
+output_image_path = r"C:\Users\fw407\Desktop\detection\output\demo-26.jpg"
 
 # 读取图像
 image_bgr = cv2.imread(input_image_path)
@@ -30,7 +30,7 @@ with torch.no_grad():
     outputs = model(**inputs)
 
 # 后处理
-results = processor.post_process_object_detection(outputs, threshold=0.2, target_sizes=[(height, width)])[0]
+results = processor.post_process_object_detection(outputs, threshold=0.4, target_sizes=[(height, width)])[0]
 
 boxes = results["boxes"]
 scores = results["scores"]
