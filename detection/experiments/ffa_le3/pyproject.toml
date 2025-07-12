@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "detection"
+version = "1.0.0"
+description = ""
+license = "Apache-2.0"
+dependencies = [
+    "flwr[simulation]>=1.19.0",
+    "flwr-datasets>=0.5.0",
+    "torch==2.6.0",
+    "transformers>=4.50.0,<5.0",
+    "evaluate>=0.4.0,<1.0",
+    "datasets>=3.0.0",
+    "scikit-learn>=1.6.1, <2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[tool.flwr.app]
+publisher = "fw407"
+
+[tool.flwr.app.components]
+serverapp = "src.server_app:app"
+clientapp = "src.client_app:app"
+
+[tool.flwr.app.config]
+grpc-max-message-length = 1073741824
+enable-parameter-chaining = true
+num-server-rounds = 100
+strategy.fraction-fit = 0.2
+strategy.fraction-evaluate = 0.0
+
+dataset.name = "fw407/lvis-6"
+model.name = "SenseTime/deformable-detr"
+
+fl.rank-choices = "64,16,4"
+fl.device-nums = "1,4,5"
+
+fl.fl-method = "vanilla"
+fl.peft-name = "ffa"
+fl.scaling-method = "sqrt"
+
+train.save-every-round = 10
+train.learning-rate-max = 1e-3
+train.learning-rate-min = 2e-5
+train.training-arguments.output-dir = ""
+train.training-arguments.learning-rate = 5e-4
+train.training-arguments.per-device-train-batch-size = 4
+train.training-arguments.gradient-accumulation-steps = 1
+train.training-arguments.logging-steps = 10
+train.training-arguments.num-train-epochs = 3
+train.training-arguments.max-steps = -1
+train.training-arguments.save-steps = 1000
+train.training-arguments.save-total-limit = 10
+train.training-arguments.gradient-checkpointing = false
+train.training-arguments.lr-scheduler-type = "constant"
+train.training-arguments.bf16 = false
+train.training-arguments.fp16 = false
+train.training-arguments.remove_unused_columns = false
+
+[tool.flwr.federations]
+default = "local-simulation"
+
+[tool.flwr.federations.local-simulation]
+options.num-supernodes = 10
+options.backend.client-resources.num-cpus = 10
+options.backend.client-resources.num-gpus = 0.5
