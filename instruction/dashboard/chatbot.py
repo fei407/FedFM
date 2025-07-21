@@ -102,19 +102,20 @@ def load_raw_model(model_name_or_path):
 def render():
     st.subheader("📂 Loading PEFT Model")
 
-    default_peft_path = "/home/fw407/workspace/results/ffa_dr_sqrt/peft_100"
+    default_peft_path = "/home/fw407/workspace/FedFM/results/ffa_dr_sqrt/peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
 
     path_col, browse_col = st.columns([4, 1])
     with path_col:
         st.session_state["peft_path"] = st.text_input("PEFT model path:", st.session_state["peft_path"])
     with browse_col:
-        if st.button("📂 Choose files", key="pick_peft"):
-            root = tk.Tk(); root.withdraw()
-            selected = filedialog.askdirectory(initialdir=st.session_state["peft_path"])
-            root.destroy()
-            if selected:
-                st.session_state["peft_path"] = selected
+        # if st.button("📂 Choose files", key="pick_peft"):
+        #     root = tk.Tk(); root.withdraw()
+        #     selected = filedialog.askdirectory(initialdir=st.session_state["peft_path"])
+        #     root.destroy()
+        #     if selected:
+        #         st.session_state["peft_path"] = selected
+        pass
 
         if st.button("Load the fine-tuned model", key="load_peft", type="secondary"):
             base_path = st.session_state["peft_path"]
