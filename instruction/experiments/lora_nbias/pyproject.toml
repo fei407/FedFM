@@ -24,8 +24,8 @@ packages = ["."]
 publisher = "fw407"
 
 [tool.flwr.app.components]
-serverapp = "fedfm.server_app:app"
-clientapp = "fedfm.client_app:app"
+serverapp = "src.server_app:app"
+clientapp = "src.client_app:app"
 
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824

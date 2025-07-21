@@ -10,7 +10,7 @@ import os
 import math
 import random
 import numpy as np
-import time
+import re
 
 def set_seed(seed: int = 42):
     random.seed(seed)
@@ -100,14 +100,14 @@ def load_raw_model(model_name_or_path):
     return model, tokenizer
 
 def render():
-    st.subheader("📂 Model loading")
+    st.subheader("📂 Loading PEFT Model")
 
     default_peft_path = "/home/fw407/workspace/results/ffa_dr_sqrt/peft_100"
     st.session_state.setdefault("peft_path", default_peft_path)
 
     path_col, browse_col = st.columns([4, 1])
     with path_col:
-        st.session_state["peft_path"] = st.text_input("PEFT model path", st.session_state["peft_path"])
+        st.session_state["peft_path"] = st.text_input("PEFT model path:", st.session_state["peft_path"])
     with browse_col:
         if st.button("📂 Choose files", key="pick_peft"):
             root = tk.Tk(); root.withdraw()
@@ -116,7 +116,7 @@ def render():
             if selected:
                 st.session_state["peft_path"] = selected
 
-        if st.button("Load the finetuned model", key="load_peft", type="secondary"):
+        if st.button("Load the fine-tuned model", key="load_peft", type="secondary"):
             base_path = st.session_state["peft_path"]
             adapter_names = [f"group_{i}" for i in range(3)]
 
@@ -142,7 +142,7 @@ def render():
                 # for name, param in ft_model.named_parameters():
                 #     print(f"Parameter: {name}, Shape: {param.shape}, Dtype: {param.dtype}, Trainable: {param.requires_grad}, device: {param.device}")
 
-                st.success("Model is loaded.")
+                st.success("The model is loaded.")
 
     if "tokenizer" not in st.session_state or "raw_model" not in st.session_state:
         st.session_state["raw_model"], st.session_state["tokenizer"] = load_raw_model(model_name)
@@ -215,21 +215,33 @@ def render():
 
             st.session_state.ft_ans = tokenizer.decode(ft_outputs[0][input_len:], skip_special_tokens=True).strip()
         else:
-            st.warning("Please load finetuned model first!")
+            st.warning("Please load fine-tuned model.")
 
     col1, col2 = st.columns(2)
 
     with col1:
         with st.chat_message("assistant"):
-            st.write("\n### Base Model's Answer (the original SmolLM2-135M): ")
-            content = st.session_state.base_ans.strip().replace("##", "").replace("#", "")
-            st.write(content if content else "🤖 Awaiting generated response...")
+            st.write("\n### Base Model (SmolLM2-135M): ")
+
+            content = st.session_state.base_ans.strip()
+            content = re.sub(r"^#{1,6}\s*", "", content, flags=re.MULTILINE)
+            content = re.sub(r"\n[-=]{3,}\n", "\n", content)
+            content = re.sub(r"(?<=\n)[-=]{3,}(?=\n)", "", content)
+            content = re.sub(r"\n{3,}", "\n\n", content)
+
+            st.write(content if content else "Awaiting generated response...")
 
     with col2:
         with st.chat_message("assistant"):
-            st.write("\n### Finetuned Model's Answer (the SmolLM2-135M model finetuned on the Alpaca-GPT4 dataset): ")
-            content = st.session_state.ft_ans.strip().replace("##", "").replace("#", "")
-            st.write(content if content else "🤖 Awaiting generated response...")
+            st.write("\n### Fine-tuned Model (on Alpaca-GPT4): ")
+
+            content = st.session_state.ft_ans.strip()
+            content = re.sub(r"^#{1,6}\s*", "", content, flags=re.MULTILINE)
+            content = re.sub(r"\n[-=]{3,}\n", "\n", content)
+            content = re.sub(r"(?<=\n)[-=]{3,}(?=\n)", "", content)
+            content = re.sub(r"\n{3,}", "\n\n", content)
+
+            st.write(content if content else "Awaiting generated response...")
 
 
 if __name__ == "__main__":

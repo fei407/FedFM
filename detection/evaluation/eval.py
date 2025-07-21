@@ -8,9 +8,7 @@ print(f"Device type: {device}")
 
 # base model & fine-tuned model
 # model_path = "SenseTime/deformable-detr"
-# model_path = r"C:\Users\fw407\fedfm\object_detection\lr1e-3"
-model_path = r"C:\Users\fw407\fedfm\object_detection\lr5e-4"
-# model_path = r"C:\Users\fw407\fedfm\object_detection\lr1e-4"
+model_path = r"C:\Users\fw407\fedfm\object_detection\ffa_dr_le1"
 
 model = AutoModelForObjectDetection.from_pretrained(model_path)
 
@@ -20,14 +18,14 @@ model.eval()
 
 if "SenseTime" in model_path:
     threshold = 0.4
-    print("Using base model, threshold = 0.4")
+    print(f"Using base model, threshold = {threshold}")
 else:
-    threshold = 0.3
-    print("Using finetuned model, threshold = 0.3")
+    threshold = 0.4
+    print(f"Using finetuned model, threshold = {threshold}")
 
 # 输入输出路径
-input_video_path = r"C:\Users\fw407\Desktop\detection\video\running_woman.mp4"
-output_video_path = r"C:\Users\fw407\Desktop\detection\output\running_woman.mp4"
+input_video_path = r"C:\Users\fw407\Desktop\detection\video\hat_2.mp4"
+output_video_path = r"C:\Users\fw407\Desktop\detection\output\hat_2.mp4"
 
 # 打开视频
 cap = cv2.VideoCapture(input_video_path)
@@ -55,26 +53,22 @@ while cap.isOpened():
     if not ret:
         break
 
-    # 图像预处理
-    b, g, r = cv2.split(frame)
-    b_eq = cv2.equalizeHist(b)
-    g_eq = cv2.equalizeHist(g)
-    r_eq = cv2.equalizeHist(r)
-    frame_eq = cv2.merge([b_eq, g_eq, r_eq])
-    frame_rgb = cv2.cvtColor(frame_eq, cv2.COLOR_BGR2RGB)
+    # b, g, r = cv2.split(frame)
+    # b_eq = cv2.equalizeHist(b)
+    # g_eq = cv2.equalizeHist(g)
+    # r_eq = cv2.equalizeHist(r)
+    # frame_eq = cv2.merge([b_eq, g_eq, r_eq])
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    # 模型输入
     inputs = processor(images=frame_rgb, return_tensors="pt")
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
-    # 推理计时
     start_time = time.time()
     with torch.no_grad():
         outputs = model(**inputs)
     infer_time = (time.time() - start_time) * 1000
     total_infer_time += infer_time
 
-    # 后处理
     results = processor.post_process_object_detection(outputs, threshold=threshold, target_sizes=[(height, width)])[0]
     boxes = results["boxes"]
     scores = results["scores"]
@@ -90,7 +84,6 @@ while cap.isOpened():
     frame_count += 1
     print(f"Frame {frame_count}: inferecnce time = {infer_time:.2f} ms")
 
-# 平均耗时
 avg_time = total_infer_time / frame_count if frame_count else 0
 print(f"\nAverage processing time per frame: {avg_time:.2f} ms")
 

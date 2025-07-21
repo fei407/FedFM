@@ -24,8 +24,8 @@ packages = ["."]
 publisher = "fw407"
 
 [tool.flwr.app.components]
-serverapp = "fedfm.server_app:app"
-clientapp = "fedfm.client_app:app"
+serverapp = "src.server_app:app"
+clientapp = "src.client_app:app"
 
 [tool.flwr.app.config]
 grpc-max-message-length = 1073741824
@@ -37,10 +37,10 @@ strategy.fraction-evaluate = 0.0
 dataset.name = "vicgalle/alpaca-gpt4"
 model.name = "HuggingFaceTB/SmolLM2-135M"
 
-fl.rank-choices = "64,16,4"
+fl.rank-choices = "128,32,8"
 fl.device-nums = "1,4,5"
 
-fl.fl-method = "vanilla"
+fl.fl-method = "dr"
 fl.peft-name = "ffa"
 fl.scaling-method = "sqrt"
 

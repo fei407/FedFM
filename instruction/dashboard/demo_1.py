@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
-from monitor import check_device_status
+from ip_monitor import check_device_status
 from tomlkit import parse, dumps
 from tomlkit.toml_document import TOMLDocument
 import time
-from chatbot_compare import render as render_chatbot
+from chatbot import render as render_chatbot
 
 def update_pyproject_toml(
     rank_agx, rank_orin, rank_rpi, total_rounds, ratio_per_round, agg_method,
@@ -33,8 +33,9 @@ def update_pyproject_toml(
         f.write(dumps(doc))
 
 # ------------------ Page Config ------------------
-st.set_page_config(page_title="FedFM Dashboard", layout="wide")
-st.title("🌼 FLASH — System Testbed Setups")
+st.set_page_config(page_title="FLASH - Demo 1", layout="wide")
+st.title("🌼 FLASH - Demo 1")
+st.subheader("🎥 System Testbed Setup")
 
 # ------------------ Init Session State ------------------
 st.session_state.setdefault("device_status", None)
@@ -105,10 +106,8 @@ styled_df = df.style.set_table_styles([
     {"selector": "td", "props": [("text-align", "center"), ("word-wrap", "break-word"), ("max-width", "150px")]},
 ]).hide(axis="index")
 
-# 强制表格占满宽度
 html = styled_df.to_html(escape=False)
 html = html.replace('<table ', '<table style="width: 100%; table-layout: fixed;" ')
 st.markdown(html, unsafe_allow_html=True)
-
 
 render_chatbot()
